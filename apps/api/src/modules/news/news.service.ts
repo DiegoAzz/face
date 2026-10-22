@@ -5,6 +5,59 @@ import { MockEditorialLLMAdapter, ExternalLLMAdapter, LLMAdapter, createSafeHttp
 import { XMLParser } from 'fast-xml-parser';
 import * as crypto from 'crypto';
 
+function extractImageUrl(item: any, rawDescription: string): string | null {
+  // 1. Enclosure
+  if (item.enclosure) {
+    const encUrl = item.enclosure['@_url'] || item.enclosure.url;
+    if (encUrl && typeof encUrl === 'string' && encUrl.startsWith('http')) return encUrl;
+  }
+
+  // 2. media:content o media:thumbnail
+  const mediaContent = item['media:content'] || item['media:thumbnail'];
+  if (mediaContent) {
+    if (Array.isArray(mediaContent)) {
+      for (const m of mediaContent) {
+        const mUrl = m?.['@_url'] || m?.url;
+        if (mUrl && typeof mUrl === 'string' && mUrl.startsWith('http')) return mUrl;
+      }
+    } else if (typeof mediaContent === 'object') {
+      const mUrl = mediaContent['@_url'] || mediaContent.url;
+      if (mUrl && typeof mUrl === 'string' && mUrl.startsWith('http')) return mUrl;
+    }
+  }
+
+  // 3. Extracción de etiqueta <img> en description o content:encoded
+  const fullHtml = String(rawDescription || '') + ' ' + String(item['content:encoded'] || '');
+  const match = fullHtml.match(/<img[^>]+src=["'](https?:\/\/[^"']+)["']/i);
+  if (match && match[1]) {
+    return match[1];
+  }
+
+  return null;
+}
+
+async function fetchOgImage(canonicalUrl: string, httpClient: any): Promise<string | null> {
+  try {
+    const res = await httpClient.get(canonicalUrl, {
+      timeout: 3500,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) NewsFlow/1.0',
+      },
+      maxContentLength: 500000,
+    });
+    const html = typeof res.data === 'string' ? res.data : '';
+    const match =
+      html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["'](https?:\/\/[^"']+)["']/i) ||
+      html.match(/<meta[^>]+content=["'](https?:\/\/[^"']+)["'][^>]+property=["']og:image["']/i);
+    if (match && match[1]) {
+      return match[1];
+    }
+  } catch {
+    // Continuar si no responde rápido
+  }
+  return null;
+}
+
 @Injectable()
 export class NewsService implements OnModuleInit {
   private readonly logger = new Logger(NewsService.name);
@@ -176,9 +229,23 @@ export class NewsService implements OnModuleInit {
             },
           });
 
-          if (existing) continue;
+          let imageUrl = extractImageUrl(item, description);
+          if (!imageUrl) {
+            imageUrl = await fetchOgImage(canonicalUrl, httpClient);
+          }
 
-          // Crear NewsItem
+          if (existing) {
+            // Enriquecer con imagen real si no la tenía
+            if (!existing.imageUrl && imageUrl) {
+              await this.prisma.newsItem.update({
+                where: { id: existing.id },
+                data: { imageUrl },
+              });
+            }
+            continue;
+          }
+
+          // Crear NewsItem con imagen real
           const newsItem = await this.prisma.newsItem.create({
             data: {
               organizationId: source.organizationId,
@@ -186,6 +253,7 @@ export class NewsService implements OnModuleInit {
               canonicalUrl,
               title,
               excerpt: cleanExcerpt || title,
+              imageUrl,
               publishedAt: isNaN(publishedAt.getTime()) ? new Date() : publishedAt,
               contentHash,
               rawMetadata: JSON.stringify({ originalSource: source.name }),
@@ -327,6 +395,7 @@ export class NewsService implements OnModuleInit {
         storyClusterId: cluster.id,
         title: editorialOutput.headline,
         body: editorialOutput.summary,
+        imageUrl: primaryItem.imageUrl,
         sourceUrl: editorialOutput.source_url,
         sourceAttribution: editorialOutput.source_attribution,
         riskLevel,

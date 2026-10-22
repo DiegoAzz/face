@@ -76,6 +76,7 @@ export function startPublisherWorker() {
         pageAccessToken,
         message,
         link: draft.sourceUrl,
+        imageUrl: draft.imageUrl || undefined,
       });
 
       // 3. Registrar intento

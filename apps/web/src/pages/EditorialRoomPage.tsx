@@ -154,9 +154,20 @@ export const EditorialRoomPage: React.FC = () => {
                   <span className="font-semibold">{d.status}</span>
                   <span className="text-[10px] text-slate-400">v{d.version}</span>
                 </div>
-                <h4 className="font-medium text-slate-800 dark:text-slate-200 line-clamp-2">
-                  {d.title}
-                </h4>
+                <div className="flex gap-2.5 items-start">
+                  {d.imageUrl && (
+                    <img
+                      src={d.imageUrl}
+                      alt=""
+                      className="w-12 h-12 object-cover rounded-md flex-shrink-0 border border-slate-100 dark:border-slate-800"
+                    />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <h4 className="font-medium text-slate-800 dark:text-slate-200 line-clamp-2">
+                      {d.title}
+                    </h4>
+                  </div>
+                </div>
                 <div className="mt-1 flex items-center space-x-2 text-[10px] text-slate-500">
                   <span>Fuente: {d.sourceAttribution}</span>
                   {parseFlags(d.riskFlags).length > 0 && (
@@ -197,6 +208,19 @@ export const EditorialRoomPage: React.FC = () => {
 
             {/* Campos de edición */}
             <div className="space-y-4">
+              {selectedDraft.imageUrl && (
+                <div className="relative rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-900 shadow-sm max-h-72">
+                  <img
+                    src={selectedDraft.imageUrl}
+                    alt={selectedDraft.title}
+                    className="w-full h-64 object-cover"
+                  />
+                  <div className="absolute bottom-3 left-3 bg-black/75 backdrop-blur-md text-white text-xs px-3 py-1.5 rounded-lg flex items-center space-x-1.5 shadow">
+                    <span>📸 Imagen Real Verificada de la Fuente</span>
+                  </div>
+                </div>
+              )}
+
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
                   Titular Original (Facebook Headline)

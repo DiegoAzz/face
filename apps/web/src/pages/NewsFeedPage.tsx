@@ -228,9 +228,24 @@ export const NewsFeedPage: React.FC = () => {
             return (
               <div
                 key={cluster.id}
-                className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 hover:border-slate-300 dark:hover:border-slate-700 transition"
+                className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col md:flex-row gap-5 items-start justify-between hover:border-slate-300 dark:hover:border-slate-700 transition"
               >
-                <div className="space-y-2 max-w-3xl">
+                {/* Imagen Real de la Noticia */}
+                {primaryItem?.imageUrl && (
+                  <div className="w-full md:w-56 h-36 flex-shrink-0 rounded-lg overflow-hidden border border-slate-100 dark:border-slate-800 bg-slate-100 dark:bg-slate-800 shadow-sm">
+                    <img
+                      src={primaryItem.imageUrl}
+                      alt={primaryItem.title || 'Imagen de la noticia'}
+                      className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
+                      loading="lazy"
+                      onError={(e) => {
+                        (e.target as HTMLElement).style.display = 'none';
+                      }}
+                    />
+                  </div>
+                )}
+
+                <div className="space-y-2 flex-1 max-w-2xl">
                   <div className="flex flex-wrap items-center gap-2 text-xs">
                     <span
                       className={`font-semibold px-2.5 py-0.5 rounded-full border text-[11px] ${getCategoryColor(

@@ -126,6 +126,7 @@ export class PublicationsService {
         pageAccessToken,
         message,
         link: draft.sourceUrl,
+        imageUrl: draft.imageUrl || undefined,
         isTestMode: false,
       });
 

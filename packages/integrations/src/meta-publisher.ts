@@ -6,6 +6,7 @@ export interface MetaPagePublishOptions {
   pageAccessToken: string;
   message: string;
   link?: string;
+  imageUrl?: string;
   isTestMode?: boolean;
 }
 
@@ -40,13 +41,18 @@ export class MetaPagePublisher {
     }
 
     try {
-      const endpoint = `${this.baseUrl}/${pageId}/feed`;
+      let endpoint = `${this.baseUrl}/${pageId}/feed`;
       const payload: Record<string, any> = {
         message,
         access_token: pageAccessToken,
       };
 
-      if (link) {
+      if (options.imageUrl) {
+        endpoint = `${this.baseUrl}/${pageId}/photos`;
+        payload.url = options.imageUrl;
+        payload.caption = link ? `${message}\n\nEnlace oficial: ${link}` : message;
+        delete payload.message;
+      } else if (link) {
         payload.link = link;
       }
 
