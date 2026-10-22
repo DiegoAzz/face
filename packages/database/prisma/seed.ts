@@ -1,4 +1,4 @@
-import { PrismaClient, Role, NewsSourceType } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
@@ -44,11 +44,11 @@ async function main() {
         userId: adminUser.id,
       },
     },
-    update: { role: Role.SUPERADMIN },
+    update: { role: 'SUPERADMIN' },
     create: {
       organizationId: org.id,
       userId: adminUser.id,
-      role: Role.SUPERADMIN,
+      role: 'SUPERADMIN',
     },
   });
 
@@ -56,7 +56,7 @@ async function main() {
   const realSources = [
     {
       name: 'El Tiempo - Colombia',
-      type: NewsSourceType.RSS,
+      type: 'RSS',
       url: 'https://www.eltiempo.com/rss/colombia.xml',
       locale: 'es-CO',
       category: 'Colombia',
@@ -65,7 +65,7 @@ async function main() {
     },
     {
       name: 'El Espectador - Actualidad',
-      type: NewsSourceType.RSS,
+      type: 'RSS',
       url: 'https://www.elespectador.com/arc/outboundfeeds/rss/?outputType=xml',
       locale: 'es-CO',
       category: 'Actualidad',
@@ -74,7 +74,7 @@ async function main() {
     },
     {
       name: 'Portafolio - Economía',
-      type: NewsSourceType.RSS,
+      type: 'RSS',
       url: 'https://www.portafolio.co/rss/economia.xml',
       locale: 'es-CO',
       category: 'Economía',
@@ -118,13 +118,13 @@ async function main() {
     create: {
       organizationId: org.id,
       key: 'EDITORIAL_POLICIES',
-      valueJson: {
+      valueJson: JSON.stringify({
         autoPublishEnabled: false,
         requireHumanReviewForRisks: true,
         defaultTimezone: 'America/Bogota',
         maxPostsPerDay: 3,
         preferredPublishSlots: ['08:00', '12:00', '18:00'],
-      },
+      }),
     },
   });
 

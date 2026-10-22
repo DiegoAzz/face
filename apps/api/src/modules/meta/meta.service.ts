@@ -81,7 +81,7 @@ export class MetaService {
         organizationId: orgId,
         metaUserId,
         encryptedTokenRef,
-        scopes: ['pages_show_list', 'pages_read_engagement', 'pages_manage_posts'],
+        scopes: JSON.stringify(['pages_show_list', 'pages_read_engagement', 'pages_manage_posts']),
         expiresAt: expiresIn ? new Date(Date.now() + expiresIn * 1000) : null,
         status: 'ACTIVE',
       },
@@ -166,7 +166,7 @@ export class MetaService {
         action: enabled ? 'ENABLE_PAGE_PUBLISHING' : 'DISABLE_PAGE_PUBLISHING',
         targetType: 'FACEBOOK_PAGE',
         targetId: pageDbId,
-        metadataRedacted: { pageName: page.pageName, enabled },
+        metadataRedacted: JSON.stringify({ pageName: page.pageName, enabled }),
       },
     });
 

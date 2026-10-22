@@ -95,7 +95,7 @@ export class NewsService {
         sourceUrl: editorialOutput.source_url,
         sourceAttribution: editorialOutput.source_attribution,
         riskLevel,
-        riskFlags: editorialOutput.risk_flags,
+        riskFlags: JSON.stringify(editorialOutput.risk_flags),
         status: DraftStatus.REVIEW,
         suggestedPublishAt: editorialOutput.suggested_publish_at ? new Date(editorialOutput.suggested_publish_at) : null,
       },
@@ -108,7 +108,7 @@ export class NewsService {
         action: 'GENERATE_EDITORIAL_DRAFT',
         targetType: 'DRAFT',
         targetId: draft.id,
-        metadataRedacted: { title: draft.title, riskFlags: draft.riskFlags },
+        metadataRedacted: JSON.stringify({ title: draft.title, riskFlags: draft.riskFlags }),
       },
     });
 

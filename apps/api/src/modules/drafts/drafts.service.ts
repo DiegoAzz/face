@@ -74,7 +74,7 @@ export class DraftsService {
           action: 'UPDATE_DRAFT',
           targetType: 'DRAFT',
           targetId: draftId,
-          metadataRedacted: { version: updated.version, reason: dto.reason },
+          metadataRedacted: JSON.stringify({ version: updated.version, reason: dto.reason }),
         },
       });
 
@@ -130,7 +130,7 @@ export class DraftsService {
         action: 'REJECT_DRAFT',
         targetType: 'DRAFT',
         targetId: draftId,
-        metadataRedacted: { reason: reason || 'Rechazado en sala editorial' },
+        metadataRedacted: JSON.stringify({ reason: reason || 'Rechazado en sala editorial' }),
       },
     });
 
@@ -191,7 +191,7 @@ export class DraftsService {
         action: 'SCHEDULE_PUBLICATION_JOB',
         targetType: 'PUBLICATION_JOB',
         targetId: job.id,
-        metadataRedacted: { pageName: page.pageName, scheduledAt: scheduledDate },
+        metadataRedacted: JSON.stringify({ pageName: page.pageName, scheduledAt: scheduledDate }),
       },
     });
 

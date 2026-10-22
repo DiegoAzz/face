@@ -4,8 +4,7 @@ datasource db {
 }
 
 generator client {
-  provider      = "prisma-client-js"
-  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+  provider = "prisma-client-js"
 }
 
 model Organization {
@@ -73,7 +72,7 @@ model MetaConnection {
   organizationId   String       @map("organization_id")
   metaUserId       String       @map("meta_user_id")
   encryptedTokenRef String      @map("encrypted_token_ref")
-  scopes           Json         @default("[\"pages_show_list\",\"pages_read_engagement\",\"pages_manage_posts\"]")
+  scopes           String       @default("[\"pages_show_list\",\"pages_read_engagement\",\"pages_manage_posts\"]")
   expiresAt        DateTime?    @map("expires_at")
   status           String       @default("ACTIVE")
   createdAt        DateTime     @default(now()) @map("created_at")
@@ -142,7 +141,7 @@ model NewsItem {
   publishedAt    DateTime     @map("published_at")
   fetchedAt      DateTime     @default(now()) @map("fetched_at")
   contentHash    String       @map("content_hash")
-  rawMetadata    Json         @default("{}") @map("raw_metadata")
+  rawMetadata    String       @default("{}") @map("raw_metadata")
   createdAt      DateTime     @default(now()) @map("created_at")
   updatedAt      DateTime     @updatedAt @map("updated_at")
 
@@ -199,7 +198,7 @@ model Draft {
   sourceUrl         String      @map("source_url")
   sourceAttribution String      @map("source_attribution")
   riskLevel         String      @default("LOW") @map("risk_level")
-  riskFlags         Json        @default("[]") @map("risk_flags")
+  riskFlags         String      @default("[]") @map("risk_flags")
   status            String      @default("REVIEW")
   version           Int         @default(1)
   suggestedPublishAt DateTime?  @map("suggested_publish_at")
@@ -255,8 +254,8 @@ model Schedule {
   organizationId String   @map("organization_id")
   pageId         String   @map("page_id")
   timezone       String   @default("America/Bogota")
-  allowedDays    Json     @default("[1,2,3,4,5,6,7]") @map("allowed_days")
-  timesJson      Json     @default("[\"08:00\",\"12:00\",\"18:00\"]") @map("times_json")
+  allowedDays    String   @default("1,2,3,4,5,6,7") @map("allowed_days")
+  timesJson      String   @default("[\"08:00\",\"12:00\",\"18:00\"]") @map("times_json")
   maxPostsPerDay Int      @default(3) @map("max_posts_per_day")
   enabled        Boolean  @default(true)
   createdAt      DateTime @default(now()) @map("created_at")
@@ -300,7 +299,7 @@ model PublicationAttempt {
   startedAt         DateTime @default(now()) @map("started_at")
   finishedAt        DateTime? @map("finished_at")
   status            String
-  sanitizedResponse Json     @default("{}") @map("sanitized_response")
+  sanitizedResponse String   @default("{}") @map("sanitized_response")
 
   job PublicationJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
 
@@ -352,7 +351,7 @@ model AuditLog {
   action           String
   targetType       String   @map("target_type")
   targetId         String?  @map("target_id")
-  metadataRedacted Json     @default("{}") @map("metadata_redacted")
+  metadataRedacted String   @default("{}") @map("metadata_redacted")
   createdAt        DateTime @default(now()) @map("created_at")
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -367,7 +366,7 @@ model SystemSetting {
   id             String   @id @default(uuid())
   organizationId String   @map("organization_id")
   key            String
-  valueJson      Json     @map("value_json")
+  valueJson      String   @map("value_json")
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 

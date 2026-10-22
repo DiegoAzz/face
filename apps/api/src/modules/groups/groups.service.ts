@@ -75,7 +75,7 @@ export class GroupsService {
         action: 'MANUAL_GROUP_SHARE',
         targetType: 'GROUP_BOOKMARK',
         targetId: groupId,
-        metadataRedacted: { groupName: group.name, draftTitle: draft.title },
+        metadataRedacted: JSON.stringify({ groupName: group.name, draftTitle: draft.title }),
       },
     });
 

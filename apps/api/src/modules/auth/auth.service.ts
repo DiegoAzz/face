@@ -69,7 +69,7 @@ export class AuthService {
         action: 'USER_LOGIN',
         targetType: 'USER',
         targetId: user.id,
-        metadataRedacted: { email: user.email },
+        metadataRedacted: JSON.stringify({ email: user.email }),
       },
     });
 

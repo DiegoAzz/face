@@ -30,6 +30,7 @@ RUN npm run build --workspace=@newsflow/database
 ENV DATABASE_URL="file:/app/data/newsflow.db"
 RUN mkdir -p /app/data
 RUN npx prisma db push --schema=./packages/database/prisma/schema.prisma
+RUN (npm run seed --workspace=@newsflow/database || true)
 
 # Compilar frontend Web y backend API
 RUN npm run build --workspace=@newsflow/web

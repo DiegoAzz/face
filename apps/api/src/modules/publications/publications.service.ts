@@ -136,12 +136,12 @@ export class PublicationsService {
           startedAt: startTime,
           finishedAt: new Date(),
           status: result.success ? 'SUCCESS' : 'FAILED',
-          sanitizedResponse: {
+          sanitizedResponse: JSON.stringify({
             success: result.success,
             remotePostId: result.remotePostId,
             errorMessage: result.errorMessage,
             errorCode: result.errorCode,
-          },
+          }),
         },
       });
 
