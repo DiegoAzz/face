@@ -44,9 +44,9 @@ ENV NODE_ENV=production
 ENV PORT=3000
 
 COPY --from=builder /app ./
-RUN chmod +x docker-entrypoint.sh
+COPY docker-entrypoint.sh* ./
 
 EXPOSE 3000
 EXPOSE 80
 
-CMD ["sh", "docker-entrypoint.sh"]
+CMD ["sh", "-c", "npx prisma migrate deploy --schema=./packages/database/prisma/schema.prisma || true; if [ -f apps/api/dist/main.js ]; then node apps/api/dist/main.js; else node $(find apps/api/dist -name main.js | head -n 1); fi"]
