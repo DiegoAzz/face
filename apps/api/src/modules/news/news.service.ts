@@ -40,10 +40,74 @@ export class NewsService implements OnModuleInit {
   }
 
   /**
-   * Ejecuta el ciclo de ingesta para fuentes RSS oficiales.
+   * Ejecuta el ciclo de ingesta para fuentes RSS oficiales por categorías (Deportes, Entretenimiento, Economía, Actualidad).
    */
   async syncNews(orgId?: string): Promise<number> {
-    this.logger.log('Iniciando recolección de noticias RSS...');
+    this.logger.log('Iniciando recolección de noticias RSS por categorías...');
+
+    // Asegurar que las fuentes colombianas por categoría existan en la organización
+    const defaultSources = [
+      {
+        name: 'El Tiempo - Colombia',
+        url: 'https://www.eltiempo.com/rss/colombia.xml',
+        category: 'Colombia',
+      },
+      {
+        name: 'El Espectador - Actualidad',
+        url: 'https://www.elespectador.com/arc/outboundfeeds/rss/?outputType=xml',
+        category: 'Actualidad',
+      },
+      {
+        name: 'Portafolio - Economía',
+        url: 'https://www.portafolio.co/rss/economia.xml',
+        category: 'Economía',
+      },
+      {
+        name: 'El Tiempo - Deportes',
+        url: 'https://www.eltiempo.com/rss/deportes.xml',
+        category: 'Deportes',
+      },
+      {
+        name: 'El Espectador - Deportes',
+        url: 'https://www.elespectador.com/arc/outboundfeeds/rss/?outputType=xml&feed=deportes',
+        category: 'Deportes',
+      },
+      {
+        name: 'El Tiempo - Gente y Farándula',
+        url: 'https://www.eltiempo.com/rss/cultura/gente.xml',
+        category: 'Entretenimiento',
+      },
+      {
+        name: 'El Espectador - Entretenimiento',
+        url: 'https://www.elespectador.com/arc/outboundfeeds/rss/?outputType=xml&feed=entretenimiento',
+        category: 'Entretenimiento',
+      },
+    ];
+
+    if (orgId) {
+      for (const def of defaultSources) {
+        await this.prisma.newsSource.upsert({
+          where: {
+            organizationId_url: {
+              organizationId: orgId,
+              url: def.url,
+            },
+          },
+          update: { category: def.category },
+          create: {
+            organizationId: orgId,
+            name: def.name,
+            type: 'RSS',
+            url: def.url,
+            category: def.category,
+            locale: 'es-CO',
+            pollingInterval: 30,
+            enabled: true,
+          },
+        });
+      }
+    }
+
     const whereClause: any = { enabled: true };
     if (orgId) {
       whereClause.organizationId = orgId;
