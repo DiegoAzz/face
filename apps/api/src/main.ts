@@ -9,6 +9,16 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 
 async function bootstrap() {
+  // Asegurar variables de entorno críticas por defecto para prevenir caídas de arranque
+  process.env.DATABASE_URL =
+    process.env.DATABASE_URL ||
+    'postgresql://newsflow_user:newsflow_secure_password@localhost:5432/newsflow_db?schema=public';
+  process.env.SESSION_SECRET =
+    process.env.SESSION_SECRET || 'newsflow_super_secret_session_key_2026_xyz_dev';
+  process.env.TOKEN_ENCRYPTION_KEY =
+    process.env.TOKEN_ENCRYPTION_KEY ||
+    '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+
   const logger = new Logger('NewsFlow-API');
   const app = await NestFactory.create(AppModule);
 

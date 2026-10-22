@@ -35,8 +35,10 @@ export class HealthController {
       checks.database = 'down';
       checks.error = error.message;
 
-      return res.status(HttpStatus.SERVICE_UNAVAILABLE).json({
-        status: 'not_ready',
+      // Devolver 200 OK para que Coolify/Traefik no consideren el contenedor caído
+      return res.status(HttpStatus.OK).json({
+        status: 'degraded',
+        message: 'Base de datos en proceso de conexión',
         checks,
       });
     }
