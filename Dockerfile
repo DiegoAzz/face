@@ -2,25 +2,23 @@
 # NewsFlow AI — Dockerfile de Producción para Coolify
 # ===================================================
 
-# Etapa 1: Build de dependencias y aplicaciones
-FROM node:20-alpine AS builder
+FROM node:20-alpine
 
 WORKDIR /app
 
-RUN apk add --no-cache python3 make g++
+# Instalar dependencias nativas y OpenSSL ANTES de generar Prisma
+RUN apk add --no-cache curl openssl python3 make g++ libc6-compat
 
+# Copiar configuración del monorepo y código fuente
 COPY package*.json ./
-COPY packages/shared-types ./packages/shared-types
-COPY packages/database ./packages/database
-COPY packages/integrations ./packages/integrations
-COPY apps/api ./apps/api
-COPY apps/web ./apps/web
+COPY packages ./packages
+COPY apps ./apps
 COPY workers ./workers
 
-# Instalar todas las dependencias del monorepo
+# Instalar todas las dependencias
 RUN npm install
 
-# Generar Prisma Client
+# Generar Prisma Client con OpenSSL correctamente detectado
 RUN npx prisma generate --schema=./packages/database/prisma/schema.prisma
 
 # Compilar tipos compartidos, integraciones y base de datos
@@ -33,20 +31,10 @@ RUN npm run build --workspace=@newsflow/web
 RUN npm run build --workspace=@newsflow/api
 RUN (npm run build --workspace=@newsflow/workers || (cd workers && npx tsc))
 
-# Etapa 2: Imagen Final Liviana de Ejecución
-FROM node:20-alpine AS runner
-
-WORKDIR /app
-
-RUN apk add --no-cache curl openssl
-
 ENV NODE_ENV=production
 ENV PORT=3000
-
-COPY --from=builder /app ./
-COPY docker-entrypoint.sh* ./
 
 EXPOSE 3000
 EXPOSE 80
 
-CMD ["sh", "-c", "npx prisma migrate deploy --schema=./packages/database/prisma/schema.prisma || true; if [ -f apps/api/dist/main.js ]; then node apps/api/dist/main.js; else node $(find apps/api/dist -name main.js | head -n 1); fi"]
+CMD ["node", "apps/api/dist/main.js"]
