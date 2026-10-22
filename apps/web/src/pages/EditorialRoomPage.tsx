@@ -11,6 +11,19 @@ import {
   Send,
 } from 'lucide-react';
 
+const parseFlags = (flags: any): string[] => {
+  if (Array.isArray(flags)) return flags;
+  if (typeof flags === 'string') {
+    try {
+      const parsed = JSON.parse(flags);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+};
+
 export const EditorialRoomPage: React.FC = () => {
   const [drafts, setDrafts] = useState<any[]>([]);
   const [pages, setPages] = useState<any[]>([]);
@@ -146,8 +159,8 @@ export const EditorialRoomPage: React.FC = () => {
                 </h4>
                 <div className="mt-1 flex items-center space-x-2 text-[10px] text-slate-500">
                   <span>Fuente: {d.sourceAttribution}</span>
-                  {d.riskFlags?.length > 0 && (
-                    <span className="text-amber-600 font-semibold">• {d.riskFlags.length} Alerta(s)</span>
+                  {parseFlags(d.riskFlags).length > 0 && (
+                    <span className="text-amber-600 font-semibold">• {parseFlags(d.riskFlags).length} Alerta(s)</span>
                   )}
                 </div>
               </div>
@@ -169,10 +182,10 @@ export const EditorialRoomPage: React.FC = () => {
                 </span>
               </div>
 
-              {selectedDraft.riskFlags?.length > 0 ? (
+              {parseFlags(selectedDraft.riskFlags).length > 0 ? (
                 <div className="flex items-center space-x-1 text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/60 px-2.5 py-1 rounded-md border border-amber-200 dark:border-amber-900">
                   <ShieldAlert className="w-4 h-4 flex-shrink-0" />
-                  <span>Banderas: {selectedDraft.riskFlags.join(', ')} (Revisión Obligatoria)</span>
+                  <span>Banderas: {parseFlags(selectedDraft.riskFlags).join(', ')} (Revisión Obligatoria)</span>
                 </div>
               ) : (
                 <div className="flex items-center space-x-1 text-xs text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2.5 py-1 rounded-md">

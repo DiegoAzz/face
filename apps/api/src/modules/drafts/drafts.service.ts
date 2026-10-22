@@ -9,7 +9,7 @@ export class DraftsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async listDrafts(organizationId: string, status?: DraftStatus) {
-    return this.prisma.draft.findMany({
+    const drafts = await this.prisma.draft.findMany({
       where: {
         organizationId,
         ...(status ? { status } : {}),
@@ -25,6 +25,18 @@ export class DraftsService {
       },
       orderBy: { createdAt: 'desc' },
     });
+
+    return drafts.map((d) => ({
+      ...d,
+      riskFlags: (() => {
+        try {
+          const parsed = JSON.parse(d.riskFlags);
+          return Array.isArray(parsed) ? parsed : [];
+        } catch {
+          return [];
+        }
+      })(),
+    }));
   }
 
   async updateDraft(
@@ -78,7 +90,17 @@ export class DraftsService {
         },
       });
 
-      return updated;
+      return {
+        ...updated,
+        riskFlags: (() => {
+          try {
+            const parsed = JSON.parse(updated.riskFlags);
+            return Array.isArray(parsed) ? parsed : [];
+          } catch {
+            return [];
+          }
+        })(),
+      };
     });
   }
 
