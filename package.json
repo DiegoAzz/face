@@ -1,0 +1,21 @@
+{
+  "name": "newsflow-ai-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Plataforma automatizada de curación, verificación, redacción y publicación de noticias en Facebook",
+  "workspaces": [
+    "packages/*",
+    "apps/*",
+    "workers/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "dev:api": "npm run start:dev --workspace=@newsflow/api",
+    "dev:web": "npm run dev --workspace=@newsflow/web"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5"
+  }
+}

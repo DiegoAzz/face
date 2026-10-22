@@ -1,0 +1,24 @@
+{
+  "name": "@newsflow/workers",
+  "version": "1.0.0",
+  "private": true,
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -b",
+    "start:ingestion": "node dist/ingestion/index.js",
+    "start:publisher": "node dist/publisher/index.js",
+    "start:scheduler": "node dist/scheduler/index.js"
+  },
+  "dependencies": {
+    "@newsflow/database": "1.0.0",
+    "@newsflow/integrations": "1.0.0",
+    "@newsflow/shared-types": "1.0.0",
+    "bullmq": "^5.7.11",
+    "fast-xml-parser": "^4.3.6",
+    "ioredis": "^5.4.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.12",
+    "typescript": "^5.4.5"
+  }
+}

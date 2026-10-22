@@ -1,0 +1,411 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  SUPERADMIN
+  ORG_ADMIN
+  EDITOR
+  OPERATOR
+  AUDITOR
+}
+
+enum DraftStatus {
+  DISCOVERED
+  REVIEW
+  APPROVED
+  SCHEDULED
+  PUBLISHING
+  PUBLISHED
+  FAILED_RETRYABLE
+  FAILED_FINAL
+  CANCELLED
+  REJECTED
+}
+
+enum VerificationStatus {
+  UNVERIFIED
+  SINGLE_SOURCE
+  CORROBORATED
+  DISPUTED
+}
+
+enum NewsSourceType {
+  RSS
+  LICENSED_API
+}
+
+model Organization {
+  id        String   @id @default(uuid())
+  name      String
+  timezone  String   @default("America/Bogota")
+  status    String   @default("ACTIVE")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  memberships       Membership[]
+  metaConnections   MetaConnection[]
+  facebookPages     FacebookPage[]
+  newsSources       NewsSource[]
+  newsItems         NewsItem[]
+  storyClusters     StoryCluster[]
+  drafts            Draft[]
+  mediaAssets       MediaAsset[]
+  schedules         Schedule[]
+  publicationJobs   PublicationJob[]
+  groupBookmarks    GroupBookmark[]
+  manualGroupShares ManualGroupShare[]
+  auditLogs         AuditLog[]
+  systemSettings    SystemSetting[]
+
+  @@map("organizations")
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  mfaEnabled   Boolean  @default(false) @map("mfa_enabled")
+  status       String   @default("ACTIVE")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  memberships       Membership[]
+  draftRevisions    DraftRevision[]
+  manualGroupShares ManualGroupShare[]
+  auditLogs         AuditLog[]
+
+  @@map("users")
+}
+
+model Membership {
+  id             String       @id @default(uuid())
+  organizationId String       @map("organization_id")
+  userId         String       @map("user_id")
+  role           Role         @default(EDITOR)
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@index([organizationId])
+  @@index([userId])
+  @@map("memberships")
+}
+
+model MetaConnection {
+  id               String       @id @default(uuid())
+  organizationId   String       @map("organization_id")
+  metaUserId       String       @map("meta_user_id")
+  encryptedTokenRef String      @map("encrypted_token_ref")
+  scopes           String[]     @default([])
+  expiresAt        DateTime?    @map("expires_at")
+  status           String       @default("ACTIVE")
+  createdAt        DateTime     @default(now()) @map("created_at")
+  updatedAt        DateTime     @updatedAt @map("updated_at")
+
+  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  facebookPages FacebookPage[]
+
+  @@index([organizationId])
+  @@map("meta_connections")
+}
+
+model FacebookPage {
+  id                String          @id @default(uuid())
+  organizationId    String          @map("organization_id")
+  metaConnectionId  String          @map("meta_connection_id")
+  pageId            String          @map("page_id")
+  pageName          String          @map("page_name")
+  tokenRef          String          @map("token_ref")
+  publishingEnabled Boolean         @default(false) @map("publishing_enabled")
+  status            String          @default("ACTIVE")
+  createdAt         DateTime        @default(now()) @map("created_at")
+  updatedAt         DateTime        @updatedAt @map("updated_at")
+
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  metaConnection MetaConnection  @relation(fields: [metaConnectionId], references: [id], onDelete: Cascade)
+  schedules      Schedule[]
+  publicationJobs PublicationJob[]
+
+  @@unique([organizationId, pageId])
+  @@index([organizationId])
+  @@map("facebook_pages")
+}
+
+model NewsSource {
+  id              String         @id @default(uuid())
+  organizationId  String         @map("organization_id")
+  name            String
+  type            NewsSourceType @default(RSS)
+  url             String
+  locale          String         @default("es-CO")
+  category        String         @default("General")
+  licenseNotes    String?        @map("license_notes")
+  enabled         Boolean        @default(true)
+  pollingInterval Int            @default(30) @map("polling_interval")
+  lastFetchedAt   DateTime?      @map("last_fetched_at")
+  lastError       String?        @map("last_error")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  newsItems    NewsItem[]
+
+  @@unique([organizationId, url])
+  @@index([organizationId])
+  @@map("news_sources")
+}
+
+model NewsItem {
+  id             String       @id @default(uuid())
+  organizationId String       @map("organization_id")
+  sourceId       String       @map("source_id")
+  canonicalUrl   String       @map("canonical_url")
+  title          String
+  excerpt        String
+  publishedAt    DateTime     @map("published_at")
+  fetchedAt      DateTime     @default(now()) @map("fetched_at")
+  contentHash    String       @map("content_hash")
+  rawMetadata    Json         @default("{}") @map("raw_metadata")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  source            NewsSource         @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  storyClusterItems StoryClusterItem[]
+
+  @@unique([organizationId, canonicalUrl])
+  @@index([organizationId, contentHash])
+  @@index([publishedAt])
+  @@map("news_items")
+}
+
+model StoryCluster {
+  id                 String             @id @default(uuid())
+  organizationId     String             @map("organization_id")
+  topic              String
+  eventFingerprint   String             @map("event_fingerprint")
+  relevanceScore     Float              @default(0) @map("relevance_score")
+  verificationStatus VerificationStatus @default(UNVERIFIED) @map("verification_status")
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+
+  organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  storyClusterItems StoryClusterItem[]
+  drafts            Draft[]
+
+  @@unique([organizationId, eventFingerprint])
+  @@index([organizationId, relevanceScore])
+  @@map("story_clusters")
+}
+
+model StoryClusterItem {
+  id        String   @id @default(uuid())
+  clusterId String   @map("cluster_id")
+  itemId    String   @map("item_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  cluster StoryCluster @relation(fields: [clusterId], references: [id], onDelete: Cascade)
+  item    NewsItem     @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@unique([clusterId, itemId])
+  @@index([clusterId])
+  @@index([itemId])
+  @@map("story_cluster_items")
+}
+
+model Draft {
+  id                String      @id @default(uuid())
+  organizationId    String      @map("organization_id")
+  storyClusterId    String?     @map("story_cluster_id")
+  title             String
+  body              String
+  sourceUrl         String      @map("source_url")
+  sourceAttribution String      @map("source_attribution")
+  riskLevel         String      @default("LOW") @map("risk_level")
+  riskFlags         String[]    @default([]) @map("risk_flags")
+  status            DraftStatus @default(REVIEW)
+  version           Int         @default(1)
+  suggestedPublishAt DateTime?  @map("suggested_publish_at")
+  createdAt         DateTime    @default(now()) @map("created_at")
+  updatedAt         DateTime    @updatedAt @map("updated_at")
+
+  organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  storyCluster      StoryCluster?      @relation(fields: [storyClusterId], references: [id], onDelete: SetNull)
+  draftRevisions    DraftRevision[]
+  publicationJobs   PublicationJob[]
+  manualGroupShares ManualGroupShare[]
+
+  @@index([organizationId, status])
+  @@index([createdAt])
+  @@map("drafts")
+}
+
+model DraftRevision {
+  id        String   @id @default(uuid())
+  draftId   String   @map("draft_id")
+  editorId  String   @map("editor_id")
+  title     String
+  body      String
+  reason    String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  draft  Draft @relation(fields: [draftId], references: [id], onDelete: Cascade)
+  editor User  @relation(fields: [editorId], references: [id], onDelete: Cascade)
+
+  @@index([draftId])
+  @@map("draft_revisions")
+}
+
+model MediaAsset {
+  id              String   @id @default(uuid())
+  organizationId  String   @map("organization_id")
+  objectKey       String   @map("object_key")
+  mimeType        String   @map("mime_type")
+  licensingStatus String   @map("licensing_status")
+  credit          String
+  syntheticFlag   Boolean  @default(false) @map("synthetic_flag")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("media_assets")
+}
+
+model Schedule {
+  id             String   @id @default(uuid())
+  organizationId String   @map("organization_id")
+  pageId         String   @map("page_id")
+  timezone       String   @default("America/Bogota")
+  allowedDays    Int[]    @default([1, 2, 3, 4, 5, 6, 7]) @map("allowed_days")
+  timesJson      Json     @default("[\"08:00\", \"12:00\", \"18:00\"]") @map("times_json")
+  maxPostsPerDay Int      @default(3) @map("max_posts_per_day")
+  enabled        Boolean  @default(true)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  page         FacebookPage @relation(fields: [pageId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, pageId])
+  @@index([organizationId])
+  @@map("schedules")
+}
+
+model PublicationJob {
+  id             String      @id @default(uuid())
+  organizationId String      @map("organization_id")
+  draftId        String      @map("draft_id")
+  pageId         String      @map("page_id")
+  scheduledAt    DateTime    @map("scheduled_at")
+  status         DraftStatus @default(SCHEDULED)
+  idempotencyKey String      @unique @map("idempotency_key")
+  attempts       Int         @default(0)
+  remotePostId   String?     @map("remote_post_id")
+  lastErrorCode  String?     @map("last_error_code")
+  createdAt      DateTime    @default(now()) @map("created_at")
+  updatedAt      DateTime    @updatedAt @map("updated_at")
+
+  organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  draft               Draft                @relation(fields: [draftId], references: [id], onDelete: Cascade)
+  page                FacebookPage         @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  publicationAttempts PublicationAttempt[]
+
+  @@index([organizationId, status])
+  @@index([scheduledAt])
+  @@map("publication_jobs")
+}
+
+model PublicationAttempt {
+  id                String   @id @default(uuid())
+  jobId             String   @map("job_id")
+  startedAt         DateTime @default(now()) @map("started_at")
+  finishedAt        DateTime? @map("finished_at")
+  status            String
+  sanitizedResponse Json     @default("{}") @map("sanitized_response")
+
+  job PublicationJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId])
+  @@map("publication_attempts")
+}
+
+model GroupBookmark {
+  id             String   @id @default(uuid())
+  organizationId String   @map("organization_id")
+  name           String
+  url            String
+  rulesNotes     String?  @map("rules_notes")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  manualGroupShares ManualGroupShare[]
+
+  @@index([organizationId])
+  @@map("group_bookmarks")
+}
+
+model ManualGroupShare {
+  id             String   @id @default(uuid())
+  organizationId String   @map("organization_id")
+  groupId        String   @map("group_id")
+  draftId        String   @map("draft_id")
+  userId         String   @map("user_id")
+  sharedAt       DateTime @default(now()) @map("shared_at")
+  notes          String?
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  group        GroupBookmark @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  draft        Draft         @relation(fields: [draftId], references: [id], onDelete: Cascade)
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([groupId])
+  @@index([draftId])
+  @@map("manual_group_shares")
+}
+
+model AuditLog {
+  id               String   @id @default(uuid())
+  organizationId   String   @map("organization_id")
+  actorId          String?  @map("actor_id")
+  action           String
+  targetType       String   @map("target_type")
+  targetId         String?  @map("target_id")
+  metadataRedacted Json     @default("{}") @map("metadata_redacted")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  actor        User?        @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt])
+  @@index([action])
+  @@map("audit_logs")
+}
+
+model SystemSetting {
+  id             String   @id @default(uuid())
+  organizationId String   @map("organization_id")
+  key            String
+  valueJson      Json     @map("value_json")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, key])
+  @@index([organizationId])
+  @@map("system_settings")
+}
