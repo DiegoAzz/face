@@ -91,7 +91,7 @@ export async function runIngestionCycle(): Promise<number> {
             excerpt: cleanExcerpt || title,
             publishedAt: isNaN(publishedAt.getTime()) ? new Date() : publishedAt,
             contentHash,
-            rawMetadata: { originalSource: source.name },
+            rawMetadata: JSON.stringify({ originalSource: source.name }),
           },
         });
 
