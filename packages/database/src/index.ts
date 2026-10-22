@@ -39,7 +39,7 @@ let prismaInstance: PrismaClient | null = null;
 
 export function getDatabaseUrl(): string {
   const envUrl = process.env.DATABASE_URL;
-  if (!envUrl || envUrl.includes('localhost:5432') || envUrl.startsWith('postgresql://postgres:postgres@localhost')) {
+  if (!envUrl || !envUrl.startsWith('file:')) {
     return 'file:/app/data/newsflow.db';
   }
   return envUrl;

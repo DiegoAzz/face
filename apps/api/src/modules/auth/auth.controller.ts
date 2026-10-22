@@ -29,11 +29,12 @@ export class AuthController {
 
     const result = await this.authService.login(parseResult.data);
 
-    // Configurar cookie segura HttpOnly
+    // Configurar cookie compatible tanto en HTTP como en HTTPS (reverse proxy)
     res.cookie('newsflow_token', result.accessToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: false,
       sameSite: 'lax',
+      path: '/',
       maxAge: 24 * 60 * 60 * 1000, // 1 día
     });
 

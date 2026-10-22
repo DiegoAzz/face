@@ -40,14 +40,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const login = async (email: string, pass: string) => {
-    await api.post('/auth/login', { email, password: pass });
-    await refreshProfile();
+    const res = await api.post('/auth/login', { email, password: pass });
+    if (res.data?.accessToken) {
+      localStorage.setItem('newsflow_token', res.data.accessToken);
+    }
+    if (res.data?.user) {
+      setUser(res.data.user);
+    } else {
+      await refreshProfile();
+    }
   };
 
   const logout = async () => {
     try {
       await api.post('/auth/logout');
     } finally {
+      localStorage.removeItem('newsflow_token');
       setUser(null);
     }
   };
