@@ -2,6 +2,8 @@ import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/commo
 import { PrismaClient, Role, NewsSourceType } from '@newsflow/database';
 import * as bcrypt from 'bcrypt';
 import { execSync } from 'child_process';
+import * as fs from 'fs';
+import * as path from 'path';
 
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
@@ -9,43 +11,48 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
 
   async onModuleInit() {
     try {
-      await this.$connect();
-      this.logger.log('Conexión con PostgreSQL establecida exitosamente.');
+      // Asegurar directorio local de datos si se usa SQLite
+      const dataDir = '/app/data';
+      if (!fs.existsSync(dataDir)) {
+        try {
+          fs.mkdirSync(dataDir, { recursive: true });
+        } catch {
+          // Ignorar si no se puede crear /app/data (ej. local Windows)
+        }
+      }
 
-      // Inicialización automática de esquema y seeder si es primera ejecución
       await this.ensureSchemaAndSeed();
+      await this.$connect();
+      this.logger.log('Conexión con base de datos establecida exitosamente.');
     } catch (error: any) {
-      this.logger.warn(`PostgreSQL no disponible aún (${error.message}).`);
+      this.logger.warn(`Inicialización de base de datos: ${error.message}`);
     }
   }
 
   async onModuleDestroy() {
     await this.$disconnect();
-    this.logger.log('Conexión con PostgreSQL cerrada.');
+    this.logger.log('Conexión con base de datos cerrada.');
   }
 
   private async ensureSchemaAndSeed() {
     try {
-      // Intentar contar usuarios para verificar si la tabla existe
+      this.logger.log('Sincronizando esquema Prisma autónomo...');
+      execSync('npx prisma db push --skip-generate --schema=./packages/database/prisma/schema.prisma', {
+        stdio: 'inherit',
+      });
+
+      await this.$connect();
       const count = await this.user.count();
       if (count === 0) {
         await this.runInitialSeed();
       }
     } catch (error: any) {
-      this.logger.log('Tablas iniciales no encontradas. Sincronizando esquema Prisma...');
-      try {
-        execSync('npx prisma db push --skip-generate --schema=./packages/database/prisma/schema.prisma', {
-          stdio: 'inherit',
-        });
-        await this.runInitialSeed();
-      } catch (pushErr: any) {
-        this.logger.error(`Error sincronizando tablas Prisma: ${pushErr.message}`);
-      }
+      this.logger.error(`Aviso en sincronización de tablas: ${error.message}`);
     }
   }
 
   private async runInitialSeed() {
-    this.logger.log('Sembrando datos iniciales reales para NewsFlow AI...');
+    this.logger.log('Sembrando datos iniciales automáticos para NewsFlow AI...');
 
     // 1. Organización inicial
     const org = await this.organization.upsert({
@@ -59,7 +66,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       },
     });
 
-    // 2. Administrador inicial
+    // 2. Administrador inicial (admin@newsflow.local / AdminSecure2026!)
     const salt = await bcrypt.genSalt(12);
     const passwordHash = await bcrypt.hash('AdminSecure2026!', salt);
 
@@ -143,7 +150,6 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       });
     }
 
-    this.logger.log('Datos iniciales sembrados con éxito. Usuario admin@newsflow.local listo.');
+    this.logger.log('Inicialización completada. Credenciales listas: admin@newsflow.local / AdminSecure2026!');
   }
 }
-

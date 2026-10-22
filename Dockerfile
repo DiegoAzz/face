@@ -34,6 +34,8 @@ RUN (npm run build --workspace=@newsflow/workers || (cd workers && npx tsc))
 ENV NODE_ENV=production
 ENV PORT=3000
 
+RUN mkdir -p /app/data
+
 EXPOSE 3000
 EXPOSE 80
 
