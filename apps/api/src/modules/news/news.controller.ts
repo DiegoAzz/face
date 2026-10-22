@@ -22,6 +22,16 @@ export class NewsController {
     return this.newsService.listNewsItems(user.organizationId);
   }
 
+  @Post('news/sync')
+  @Roles(UserRole.SUPERADMIN, UserRole.ORG_ADMIN, UserRole.EDITOR)
+  async syncNews(@CurrentUser() user: AuthenticatedUser) {
+    const count = await this.newsService.syncNews(user.organizationId);
+    return {
+      message: `Sincronización completada. Se capturaron ${count} noticias nuevas.`,
+      count,
+    };
+  }
+
   @Get('stories')
   async listStories(@CurrentUser() user: AuthenticatedUser) {
     return this.newsService.listStories(user.organizationId);

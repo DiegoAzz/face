@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import api from '../api/client';
-import { Newspaper, Sparkles, ExternalLink, Filter, CheckCircle2 } from 'lucide-react';
+import { Newspaper, Sparkles, ExternalLink, Filter, CheckCircle2, RefreshCw } from 'lucide-react';
 
 export const NewsFeedPage: React.FC = () => {
   const [stories, setStories] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
   const [generatingId, setGeneratingId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -20,6 +21,20 @@ export const NewsFeedPage: React.FC = () => {
       console.error('Error cargando historias:', e);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSync = async () => {
+    setSyncing(true);
+    setMessage(null);
+    try {
+      const res = await api.post('/news/sync');
+      setMessage(res.data?.message || 'Sincronización completada con éxito');
+      await loadStories();
+    } catch (e: any) {
+      alert(e.response?.data?.message || 'Error sincronizando fuentes RSS');
+    } finally {
+      setSyncing(false);
     }
   };
 
@@ -44,6 +59,14 @@ export const NewsFeedPage: React.FC = () => {
           <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Noticias Detectadas y Curación</h1>
           <p className="text-sm text-slate-500">Agrupadas por acontecimientos únicos para evitar publicaciones repetidas</p>
         </div>
+        <button
+          onClick={handleSync}
+          disabled={syncing}
+          className="flex items-center space-x-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition shadow-sm disabled:opacity-50"
+        >
+          <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
+          <span>{syncing ? 'Sincronizando...' : 'Sincronizar Feeds RSS'}</span>
+        </button>
       </div>
 
       {message && (
@@ -59,9 +82,17 @@ export const NewsFeedPage: React.FC = () => {
         <div className="bg-white dark:bg-slate-900 p-8 rounded-xl border border-slate-200 dark:border-slate-800 text-center">
           <Newspaper className="w-8 h-8 text-slate-400 mx-auto mb-2" />
           <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200">No hay noticias pendientes</h3>
-          <p className="text-xs text-slate-500 mt-1">
-            Los workers de ingesta consultarán automáticamente los feeds RSS en el próximo ciclo programado.
+          <p className="text-xs text-slate-500 mt-1 mb-4">
+            Pulsa el botón para consultar los feeds RSS de El Tiempo, El Espectador y Portafolio ahora mismo.
           </p>
+          <button
+            onClick={handleSync}
+            disabled={syncing}
+            className="inline-flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition shadow-sm disabled:opacity-50"
+          >
+            <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
+            <span>{syncing ? 'Sincronizando...' : 'Sincronizar Fuentes Oficiales Ahora'}</span>
+          </button>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4">
