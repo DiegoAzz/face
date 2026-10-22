@@ -7,11 +7,11 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
+import { getDatabaseUrl } from '@newsflow/database';
 
 async function bootstrap() {
   // Asegurar variables de entorno críticas por defecto (Base de datos embebida autónoma)
-  process.env.DATABASE_URL =
-    process.env.DATABASE_URL || 'file:/app/data/newsflow.db';
+  process.env.DATABASE_URL = getDatabaseUrl();
   process.env.SESSION_SECRET =
     process.env.SESSION_SECRET || 'newsflow_super_secret_session_key_2026_xyz_dev';
   process.env.TOKEN_ENCRYPTION_KEY =

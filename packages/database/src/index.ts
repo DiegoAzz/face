@@ -37,9 +37,23 @@ export enum NewsSourceType {
 
 let prismaInstance: PrismaClient | null = null;
 
+export function getDatabaseUrl(): string {
+  const envUrl = process.env.DATABASE_URL;
+  if (!envUrl || envUrl.includes('localhost:5432') || envUrl.startsWith('postgresql://postgres:postgres@localhost')) {
+    return 'file:/app/data/newsflow.db';
+  }
+  return envUrl;
+}
+
 export function getPrismaClient(): PrismaClient {
   if (!prismaInstance) {
+    const dbUrl = getDatabaseUrl();
+    process.env.DATABASE_URL = dbUrl;
+
     prismaInstance = new PrismaClient({
+      datasources: {
+        db: { url: dbUrl },
+      },
       log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
     });
   }

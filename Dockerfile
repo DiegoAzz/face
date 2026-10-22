@@ -26,6 +26,11 @@ RUN npm run build --workspace=@newsflow/shared-types
 RUN npm run build --workspace=@newsflow/integrations
 RUN npm run build --workspace=@newsflow/database
 
+# Crear y estructurar la base de datos embebida local
+ENV DATABASE_URL="file:/app/data/newsflow.db"
+RUN mkdir -p /app/data
+RUN npx prisma db push --schema=./packages/database/prisma/schema.prisma
+
 # Compilar frontend Web y backend API
 RUN npm run build --workspace=@newsflow/web
 RUN npm run build --workspace=@newsflow/api

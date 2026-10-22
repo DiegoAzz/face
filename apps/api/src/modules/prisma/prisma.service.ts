@@ -1,31 +1,41 @@
 import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
-import { PrismaClient, Role, NewsSourceType } from '@newsflow/database';
+import { PrismaClient, Role, NewsSourceType, getDatabaseUrl } from '@newsflow/database';
 import * as bcrypt from 'bcrypt';
 import { execSync } from 'child_process';
 import * as fs from 'fs';
-import * as path from 'path';
 
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(PrismaService.name);
 
+  constructor() {
+    const dbUrl = getDatabaseUrl();
+    process.env.DATABASE_URL = dbUrl;
+    super({
+      datasources: {
+        db: { url: dbUrl },
+      },
+    });
+  }
+
   async onModuleInit() {
     try {
-      // Asegurar directorio local de datos si se usa SQLite
-      const dataDir = '/app/data';
-      if (!fs.existsSync(dataDir)) {
-        try {
-          fs.mkdirSync(dataDir, { recursive: true });
-        } catch {
-          // Ignorar si no se puede crear /app/data (ej. local Windows)
+      const dbUrl = getDatabaseUrl();
+      this.logger.log(`Inicializando base de datos en: ${dbUrl}`);
+
+      // Crear directorio /app/data si no existe
+      if (dbUrl.includes('/app/data')) {
+        const dir = '/app/data';
+        if (!fs.existsSync(dir)) {
+          fs.mkdirSync(dir, { recursive: true });
         }
       }
 
       await this.ensureSchemaAndSeed();
       await this.$connect();
-      this.logger.log('Conexión con base de datos establecida exitosamente.');
+      this.logger.log('Base de datos conectada y verificada.');
     } catch (error: any) {
-      this.logger.warn(`Inicialización de base de datos: ${error.message}`);
+      this.logger.warn(`Aviso en conexión inicial: ${error.message}`);
     }
   }
 
@@ -35,9 +45,11 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   }
 
   private async ensureSchemaAndSeed() {
+    const dbUrl = getDatabaseUrl();
     try {
-      this.logger.log('Sincronizando esquema Prisma autónomo...');
+      // Sincronizar tablas
       execSync('npx prisma db push --skip-generate --schema=./packages/database/prisma/schema.prisma', {
+        env: { ...process.env, DATABASE_URL: dbUrl },
         stdio: 'inherit',
       });
 
@@ -47,14 +59,13 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
         await this.runInitialSeed();
       }
     } catch (error: any) {
-      this.logger.error(`Aviso en sincronización de tablas: ${error.message}`);
+      this.logger.error(`Error asegurando esquema: ${error.message}`);
     }
   }
 
   private async runInitialSeed() {
-    this.logger.log('Sembrando datos iniciales automáticos para NewsFlow AI...');
+    this.logger.log('Sembrando usuario inicial y fuentes oficiales...');
 
-    // 1. Organización inicial
     const org = await this.organization.upsert({
       where: { id: '00000000-0000-0000-0000-000000000001' },
       update: {},
@@ -66,7 +77,6 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       },
     });
 
-    // 2. Administrador inicial (admin@newsflow.local / AdminSecure2026!)
     const salt = await bcrypt.genSalt(12);
     const passwordHash = await bcrypt.hash('AdminSecure2026!', salt);
 
@@ -80,7 +90,6 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       },
     });
 
-    // 3. Membresía Superadmin
     await this.membership.upsert({
       where: {
         organizationId_userId: {
@@ -96,7 +105,6 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       },
     });
 
-    // 4. Fuentes RSS oficiales reales de Colombia
     const sources = [
       {
         name: 'El Tiempo - Colombia',
@@ -150,6 +158,6 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       });
     }
 
-    this.logger.log('Inicialización completada. Credenciales listas: admin@newsflow.local / AdminSecure2026!');
+    this.logger.log('Datos iniciales sembrados con éxito (admin@newsflow.local / AdminSecure2026!)');
   }
 }
