@@ -98,23 +98,52 @@ export class NewsService implements OnModuleInit {
   async syncNews(orgId?: string): Promise<number> {
     this.logger.log('Iniciando recolección de noticias RSS por categorías...');
 
-    // Asegurar que las fuentes colombianas por categoría existan en la organización
+    // Catálogo completo de fuentes oficiales colombianas por categoría de periódico
     const defaultSources = [
+      // 1. Actualidad y Política Nacional
       {
         name: 'El Tiempo - Colombia',
         url: 'https://www.eltiempo.com/rss/colombia.xml',
-        category: 'Colombia',
+        category: 'Actualidad',
       },
       {
         name: 'El Espectador - Actualidad',
         url: 'https://www.elespectador.com/arc/outboundfeeds/rss/?outputType=xml',
         category: 'Actualidad',
       },
+      // 2. Economía, Finanzas y Negocios
       {
         name: 'Portafolio - Economía',
         url: 'https://www.portafolio.co/rss/economia.xml',
         category: 'Economía',
       },
+      {
+        name: 'Portafolio - Negocios',
+        url: 'https://www.portafolio.co/rss/negocios.xml',
+        category: 'Economía',
+      },
+      {
+        name: 'El Tiempo - Economía',
+        url: 'https://www.eltiempo.com/rss/economia.xml',
+        category: 'Economía',
+      },
+      // 3. Tecnología e Inteligencia Artificial
+      {
+        name: 'El Tiempo - Tecnosfera',
+        url: 'https://www.eltiempo.com/rss/tecnosfera.xml',
+        category: 'Tecnología',
+      },
+      {
+        name: 'Portafolio - Innovación y Tecnología',
+        url: 'https://www.portafolio.co/rss/innovacion.xml',
+        category: 'Tecnología',
+      },
+      {
+        name: 'El Espectador - Tecnología',
+        url: 'https://www.elespectador.com/arc/outboundfeeds/rss/?outputType=xml&feed=tecnologia',
+        category: 'Tecnología',
+      },
+      // 4. Deportes (Fútbol, Ciclismo, Selección)
       {
         name: 'El Tiempo - Deportes',
         url: 'https://www.eltiempo.com/rss/deportes.xml',
@@ -125,6 +154,7 @@ export class NewsService implements OnModuleInit {
         url: 'https://www.elespectador.com/arc/outboundfeeds/rss/?outputType=xml&feed=deportes',
         category: 'Deportes',
       },
+      // 5. Entretenimiento, Farándula y Chismes
       {
         name: 'El Tiempo - Gente y Farándula',
         url: 'https://www.eltiempo.com/rss/cultura/gente.xml',
@@ -134,6 +164,55 @@ export class NewsService implements OnModuleInit {
         name: 'El Espectador - Entretenimiento',
         url: 'https://www.elespectador.com/arc/outboundfeeds/rss/?outputType=xml&feed=entretenimiento',
         category: 'Entretenimiento',
+      },
+      // 6. Mundo e Internacional
+      {
+        name: 'El Tiempo - Mundo',
+        url: 'https://www.eltiempo.com/rss/mundo.xml',
+        category: 'Mundo',
+      },
+      {
+        name: 'Portafolio - Internacional',
+        url: 'https://www.portafolio.co/rss/internacional.xml',
+        category: 'Mundo',
+      },
+      {
+        name: 'El Espectador - Mundo',
+        url: 'https://www.elespectador.com/arc/outboundfeeds/rss/?outputType=xml&feed=mundo',
+        category: 'Mundo',
+      },
+      // 7. Salud y Bienestar
+      {
+        name: 'El Tiempo - Salud',
+        url: 'https://www.eltiempo.com/rss/salud.xml',
+        category: 'Salud',
+      },
+      {
+        name: 'El Espectador - Salud',
+        url: 'https://www.elespectador.com/arc/outboundfeeds/rss/?outputType=xml&feed=salud',
+        category: 'Salud',
+      },
+      // 8. Ciencia y Medio Ambiente
+      {
+        name: 'El Tiempo - Vida y Ciencia',
+        url: 'https://www.eltiempo.com/rss/vida/ciencia.xml',
+        category: 'Ciencia',
+      },
+      {
+        name: 'El Espectador - Ciencia y Ambiente',
+        url: 'https://www.elespectador.com/arc/outboundfeeds/rss/?outputType=xml&feed=ciencia',
+        category: 'Ciencia',
+      },
+      // 9. Cultura y Tendencias
+      {
+        name: 'Portafolio - Tendencias y Estilo',
+        url: 'https://www.portafolio.co/rss/tendencias.xml',
+        category: 'Cultura',
+      },
+      {
+        name: 'El Tiempo - Cultura',
+        url: 'https://www.eltiempo.com/rss/cultura.xml',
+        category: 'Cultura',
       },
     ];
 

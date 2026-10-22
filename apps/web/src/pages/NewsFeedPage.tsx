@@ -57,22 +57,53 @@ export const NewsFeedPage: React.FC = () => {
   const getCategory = (cluster: any): string => {
     const raw = cluster.storyClusterItems?.[0]?.item?.source?.category || '';
     const lower = raw.toLowerCase();
-    if (lower.includes('deporte')) return 'Deportes';
+    if (
+      lower.includes('tecno') ||
+      lower.includes('innova') ||
+      lower.includes('software') ||
+      lower.includes('ia') ||
+      lower.includes('gadget') ||
+      lower.includes('app')
+    )
+      return 'Tecnología';
+    if (lower.includes('deporte') || lower.includes('futbol') || lower.includes('ciclismo'))
+      return 'Deportes';
     if (
       lower.includes('entreten') ||
       lower.includes('gente') ||
       lower.includes('farand') ||
       lower.includes('chisme') ||
-      lower.includes('cultura')
+      lower.includes('famoso') ||
+      lower.includes('espectaculo')
     )
       return 'Entretenimiento';
-    if (lower.includes('econom') || lower.includes('finanz') || lower.includes('negocio'))
+    if (
+      lower.includes('econom') ||
+      lower.includes('finanz') ||
+      lower.includes('negocio') ||
+      lower.includes('empresa') ||
+      lower.includes('dolar')
+    )
       return 'Economía';
+    if (lower.includes('salud') || lower.includes('medicina') || lower.includes('bienestar'))
+      return 'Salud';
+    if (
+      lower.includes('ciencia') ||
+      lower.includes('ambiente') ||
+      lower.includes('clima') ||
+      lower.includes('planeta')
+    )
+      return 'Ciencia';
+    if (lower.includes('mundo') || lower.includes('internac') || lower.includes('global'))
+      return 'Mundo';
+    if (lower.includes('cultura') || lower.includes('tendencia') || lower.includes('estilo'))
+      return 'Cultura';
     if (
       lower.includes('colombia') ||
       lower.includes('actual') ||
       lower.includes('politica') ||
-      lower.includes('nacion')
+      lower.includes('nacion') ||
+      lower.includes('justicia')
     )
       return 'Actualidad';
     return raw || 'General';
@@ -80,10 +111,15 @@ export const NewsFeedPage: React.FC = () => {
 
   const categoryBadges: { id: string; label: string; icon: string }[] = [
     { id: 'Todas', label: 'Todas', icon: '📰' },
+    { id: 'Tecnología', label: 'Tecnología e IA', icon: '💻' },
     { id: 'Deportes', label: 'Deportes', icon: '⚽' },
     { id: 'Entretenimiento', label: 'Entretenimiento / Farándula', icon: '🎭' },
-    { id: 'Economía', label: 'Economía', icon: '💼' },
+    { id: 'Economía', label: 'Economía y Negocios', icon: '💼' },
     { id: 'Actualidad', label: 'Actualidad / Colombia', icon: '🇨🇴' },
+    { id: 'Mundo', label: 'Mundo', icon: '🌎' },
+    { id: 'Salud', label: 'Salud y Bienestar', icon: '🩺' },
+    { id: 'Ciencia', label: 'Ciencia y Ambiente', icon: '🌿' },
+    { id: 'Cultura', label: 'Cultura y Estilo', icon: '✈️' },
   ];
 
   const filteredStories = stories.filter((cluster) => {
@@ -104,16 +140,27 @@ export const NewsFeedPage: React.FC = () => {
 
   const getCategoryColor = (cat: string) => {
     switch (cat.toLowerCase()) {
+      case 'tecnología':
+      case 'tecnologia':
+        return 'bg-cyan-50 dark:bg-cyan-950/80 text-cyan-700 dark:text-cyan-300 border-cyan-200 dark:border-cyan-800';
       case 'deportes':
         return 'bg-emerald-50 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800';
       case 'entretenimiento':
-        return 'bg-purple-50 dark:bg-purple-950/80 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800';
+        return 'bg-pink-50 dark:bg-pink-950/80 text-pink-700 dark:text-pink-300 border-pink-200 dark:border-pink-800';
       case 'economía':
       case 'economia':
         return 'bg-amber-50 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800';
       case 'actualidad':
       case 'colombia':
         return 'bg-blue-50 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800';
+      case 'mundo':
+        return 'bg-indigo-50 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800';
+      case 'salud':
+        return 'bg-rose-50 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800';
+      case 'ciencia':
+        return 'bg-teal-50 dark:bg-teal-950/80 text-teal-700 dark:text-teal-300 border-teal-200 dark:border-teal-800';
+      case 'cultura':
+        return 'bg-violet-50 dark:bg-violet-950/80 text-violet-700 dark:text-violet-300 border-violet-200 dark:border-violet-800';
       default:
         return 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700';
     }
