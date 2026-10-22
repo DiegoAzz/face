@@ -1,0 +1,132 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - TZ=${TZ:-America/Bogota}
+      - APP_URL=${APP_URL:-https://face.appzplay.online}
+      - API_URL=${API_URL:-https://face.appzplay.online/api}
+      - PORT=3000
+      - DATABASE_URL=${DATABASE_URL:-postgresql://newsflow_user:newsflow_secure_password@postgres:5432/newsflow_db?schema=public}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
+      - SESSION_SECRET=${SESSION_SECRET:-newsflow_session_secret_random_64_characters_min_length}
+      - TOKEN_ENCRYPTION_KEY=${TOKEN_ENCRYPTION_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
+      - META_APP_ID=${META_APP_ID}
+      - META_APP_SECRET=${META_APP_SECRET}
+      - META_REDIRECT_URI=${META_REDIRECT_URI:-https://face.appzplay.online/api/meta/connect/callback}
+      - META_GRAPH_API_VERSION=${META_GRAPH_API_VERSION:-v19.0}
+      - LLM_PROVIDER=${LLM_PROVIDER:-openai}
+      - LLM_API_KEY=${LLM_API_KEY}
+      - AUTO_PUBLISH_ENABLED=${AUTO_PUBLISH_ENABLED:-false}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - newsflow_net
+
+  worker-ingestion:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: ["node", "workers/dist/ingestion/index.js"]
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=${DATABASE_URL:-postgresql://newsflow_user:newsflow_secure_password@postgres:5432/newsflow_db?schema=public}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
+      - TZ=${TZ:-America/Bogota}
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      - newsflow_net
+
+  worker-publisher:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: ["node", "workers/dist/publisher/index.js"]
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=${DATABASE_URL:-postgresql://newsflow_user:newsflow_secure_password@postgres:5432/newsflow_db?schema=public}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
+      - TOKEN_ENCRYPTION_KEY=${TOKEN_ENCRYPTION_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
+      - META_GRAPH_API_VERSION=${META_GRAPH_API_VERSION:-v19.0}
+      - TZ=${TZ:-America/Bogota}
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      - newsflow_net
+
+  worker-scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: ["node", "workers/dist/scheduler/index.js"]
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=${DATABASE_URL:-postgresql://newsflow_user:newsflow_secure_password@postgres:5432/newsflow_db?schema=public}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
+      - TZ=${TZ:-America/Bogota}
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      - newsflow_net
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=newsflow_user
+      - POSTGRES_PASSWORD=newsflow_secure_password
+      - POSTGRES_DB=newsflow_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U newsflow_user -d newsflow_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - newsflow_net
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - newsflow_net
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  newsflow_net:
+    driver: bridge
