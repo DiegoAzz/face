@@ -114,7 +114,7 @@ export class AuthService {
         },
       });
 
-      const roleEnum = (registerDto.role as Role) || Role.ORG_ADMIN;
+      const roleEnum = String(registerDto.role || Role.ORG_ADMIN);
 
       await tx.membership.create({
         data: {
