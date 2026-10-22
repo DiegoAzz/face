@@ -52,6 +52,17 @@ async function bootstrap() {
         next();
       }
     });
+  } else {
+    logger.warn('Frontend estático no encontrado. Activando página de diagnóstico');
+    app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
+      if (req.path === '/' || req.path === '/login') {
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        return res.send(
+          '<!DOCTYPE html><html><head><meta charset="utf-8"><title>NewsFlow AI</title><style>body{font-family:system-ui;padding:3rem;background:#090d16;color:#e2e8f0;text-align:center;}h1{color:#38bdf8;}.card{background:#1e293b;padding:2rem;border-radius:12px;max-width:500px;margin:2rem auto;border:1px solid #334155;}</style></head><body><div class="card"><h1>NewsFlow AI Operacional</h1><p>Servicio activo en Coolify VPS.</p><p><a style="color:#38bdf8" href="/health/live">Ver Estado en Vivo</a></p></div></body></html>'
+        );
+      }
+      next();
+    });
   }
 
   // 5. CORS restrictivo y seguro
@@ -86,11 +97,46 @@ async function bootstrap() {
     SwaggerModule.setup('api/docs', app, document);
   }
 
-  const port = process.env.PORT || 3000;
+  const port = Number(process.env.PORT) || 3000;
   await app.listen(port, '0.0.0.0');
 
   logger.log(`NewsFlow AI escuchando en http://0.0.0.0:${port}`);
   logger.log(`Frontend y API listos para producción`);
+
+  // Forwarder secundario en puerto 80 si el puerto configurado es distinto
+  if (port !== 80) {
+    try {
+      const http = await import('http');
+      const forwarder = http.createServer((req, res) => {
+        const proxyReq = http.request(
+          {
+            host: '127.0.0.1',
+            port: port,
+            path: req.url,
+            method: req.method,
+            headers: req.headers,
+          },
+          (proxyRes) => {
+            res.writeHead(proxyRes.statusCode || 200, proxyRes.headers);
+            proxyRes.pipe(res);
+          }
+        );
+        proxyReq.on('error', () => {
+          res.writeHead(502);
+          res.end('Proxy forward error');
+        });
+        req.pipe(proxyReq);
+      });
+      forwarder.listen(80, '0.0.0.0', () => {
+        logger.log(`Enrutador secundario activo en puerto 80 -> ${port}`);
+      });
+      forwarder.on('error', (err: any) => {
+        logger.warn(`Puerto 80 no disponible: ${err.message}`);
+      });
+    } catch {
+      // Ignorar si no se tienen permisos
+    }
+  }
 }
 
 bootstrap();

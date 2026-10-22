@@ -44,8 +44,9 @@ ENV NODE_ENV=production
 ENV PORT=3000
 
 COPY --from=builder /app ./
+RUN chmod +x docker-entrypoint.sh
 
 EXPOSE 3000
+EXPOSE 80
 
-# Script de inicio: ejecuta migraciones y levanta la aplicación unificada
-CMD ["sh", "-c", "npx prisma migrate deploy --schema=./packages/database/prisma/schema.prisma || true && node apps/api/dist/main.js"]
+CMD ["sh", "docker-entrypoint.sh"]
