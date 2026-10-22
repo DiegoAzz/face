@@ -31,7 +31,7 @@ RUN npm run build --workspace=@newsflow/database
 # Compilar frontend Web y backend API
 RUN npm run build --workspace=@newsflow/web
 RUN npm run build --workspace=@newsflow/api
-RUN npm run build --workspace=@newsflow/workers
+RUN (npm run build --workspace=@newsflow/workers || (cd workers && npx tsc))
 
 # Etapa 2: Imagen Final Liviana de Ejecución
 FROM node:20-alpine AS runner

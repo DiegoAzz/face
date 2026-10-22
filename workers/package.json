@@ -4,7 +4,7 @@
   "private": true,
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsc -b",
+    "build": "tsc",
     "start:ingestion": "node dist/ingestion/index.js",
     "start:publisher": "node dist/publisher/index.js",
     "start:scheduler": "node dist/scheduler/index.js"

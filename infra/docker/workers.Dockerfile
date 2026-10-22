@@ -16,7 +16,7 @@ RUN npx prisma generate --schema=./packages/database/prisma/schema.prisma
 RUN npm run build --workspace=@newsflow/shared-types
 RUN npm run build --workspace=@newsflow/integrations
 RUN npm run build --workspace=@newsflow/database
-RUN npm run build --workspace=@newsflow/workers
+RUN (npm run build --workspace=@newsflow/workers || (cd workers && npx tsc))
 
 FROM node:20-alpine AS runner
 
