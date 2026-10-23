@@ -9,6 +9,11 @@ import {
   History,
   ShieldAlert,
   Send,
+  Copy,
+  Download,
+  ExternalLink,
+  Sparkles,
+  CheckCheck,
 } from 'lucide-react';
 
 const parseFlags = (flags: any): string[] => {
@@ -34,6 +39,7 @@ export const EditorialRoomPage: React.FC = () => {
   const [selectedPageId, setSelectedPageId] = useState('');
   const [scheduledAt, setScheduledAt] = useState('');
   const [saving, setSaving] = useState(false);
+  const [copiedText, setCopiedText] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -120,6 +126,46 @@ export const EditorialRoomPage: React.FC = () => {
       alert('Publicación programada exitosamente en la cola de Meta.');
     } catch (e: any) {
       alert(e.response?.data?.message || 'Error programando publicación');
+    }
+  };
+
+  const handleCopyFullText = async () => {
+    if (!selectedDraft) return;
+    const textToCopy = `${editTitle}\n\n${editBody}\n\n📌 Fuente oficial: ${selectedDraft.sourceAttribution}\n🔗 Más detalles: ${selectedDraft.sourceUrl}\n\n#NoticiasColombia #Actualidad #Tendencia #UltimaHora`;
+    try {
+      await navigator.clipboard.writeText(textToCopy);
+      setCopiedText(true);
+      setTimeout(() => setCopiedText(false), 2500);
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = textToCopy;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      setCopiedText(true);
+      setTimeout(() => setCopiedText(false), 2500);
+    }
+  };
+
+  const handleDownloadImage = () => {
+    if (!selectedDraft?.imageUrl) return;
+    window.open(selectedDraft.imageUrl, '_blank');
+  };
+
+  const handleMarkPublished = async () => {
+    if (!selectedDraft) return;
+    try {
+      await api.patch(`/drafts/${selectedDraft.id}`, {
+        title: editTitle,
+        body: editBody,
+        reason: 'Publicado manualmente en Perfil Profesional Monetizado',
+      });
+      await api.post(`/drafts/${selectedDraft.id}/approve`);
+      await loadData();
+      alert('¡Excelente! Noticia registrada como publicada en tu perfil monetizado.');
+    } catch (e: any) {
+      alert(e.response?.data?.message || 'Error actualizando estado');
     }
   };
 
@@ -277,7 +323,81 @@ export const EditorialRoomPage: React.FC = () => {
             </div>
 
             {/* Acciones Editoriales: Aprobar / Rechazar / Programar */}
-            <div className="pt-4 border-t border-slate-100 dark:border-slate-800 space-y-4">
+            <div className="pt-4 border-t border-slate-100 dark:border-slate-800 space-y-5">
+              {/* PANEL 1: Publicador para Perfil Personal Monetizado (100% Seguro Anti-Baneo) */}
+              <div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/40 dark:to-indigo-950/40 p-5 rounded-2xl border border-blue-200 dark:border-blue-800 shadow-sm space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex items-center space-x-2">
+                    <Sparkles className="w-5 h-5 text-blue-600" />
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                      Despacho para Perfil Personal Monetizado
+                    </h3>
+                    <span className="bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-300 dark:border-emerald-700">
+                      ✓ Anti-Baneo
+                    </span>
+                  </div>
+                  <span className="text-[11px] text-slate-500">
+                    Actividad humana genuina • Máximo alcance en feed
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  <button
+                    onClick={handleCopyFullText}
+                    className="flex items-center justify-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-2.5 rounded-xl text-xs font-semibold shadow transition"
+                  >
+                    <Copy className="w-4 h-4" />
+                    <span>{copiedText ? '¡Copiado con Éxito!' : '1. Copiar Texto'}</span>
+                  </button>
+
+                  <button
+                    onClick={handleDownloadImage}
+                    disabled={!selectedDraft.imageUrl}
+                    className="flex items-center justify-center space-x-2 bg-slate-800 hover:bg-slate-900 dark:bg-slate-700 text-white px-3.5 py-2.5 rounded-xl text-xs font-semibold shadow transition disabled:opacity-40"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>2. Abrir / Guardar Foto</span>
+                  </button>
+
+                  <a
+                    href="https://www.facebook.com"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-center space-x-2 bg-indigo-600 hover:bg-indigo-700 text-white px-3.5 py-2.5 rounded-xl text-xs font-semibold shadow transition"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                    <span>3. Ir a Mi Facebook</span>
+                  </a>
+
+                  <button
+                    onClick={handleMarkPublished}
+                    className="flex items-center justify-center space-x-2 bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2.5 rounded-xl text-xs font-semibold shadow transition"
+                  >
+                    <CheckCheck className="w-4 h-4" />
+                    <span>4. Marcar Publicado</span>
+                  </button>
+                </div>
+
+                {/* Vista previa de lo copiado */}
+                <div className="bg-white/80 dark:bg-slate-900/80 p-3 rounded-xl border border-blue-100 dark:border-blue-900/50 text-xs text-slate-700 dark:text-slate-300 font-sans space-y-1">
+                  <div className="flex items-center justify-between text-[11px] font-semibold text-slate-500 mb-1">
+                    <span>Texto optimizado que se copia al portapapeles:</span>
+                    <button onClick={handleCopyFullText} className="text-blue-600 hover:underline">
+                      {copiedText ? 'Copiado ✓' : 'Copiar'}
+                    </button>
+                  </div>
+                  <p className="font-bold text-slate-900 dark:text-white">{editTitle}</p>
+                  <p className="line-clamp-2 text-slate-600 dark:text-slate-300">{editBody}</p>
+                  <p className="text-slate-500 text-[11px]">
+                    📌 Fuente oficial: {selectedDraft.sourceAttribution} • {selectedDraft.sourceUrl}
+                  </p>
+                  <p className="text-blue-600 text-[11px] font-medium">
+                    #NoticiasColombia #Actualidad #Tendencia #UltimaHora
+                  </p>
+                </div>
+              </div>
+
+              {/* Botones de Aprobación Editorial */}
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center space-x-2">
                   <button
@@ -297,7 +417,7 @@ export const EditorialRoomPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Sección de Programación */}
+              {/* PANEL 2: Publicador Automático para Páginas Oficiales (Fan Pages) */}
               <div className="bg-slate-50 dark:bg-slate-800/60 p-4 rounded-xl border border-slate-200 dark:border-slate-700 space-y-3">
                 <div className="flex items-center space-x-2 text-xs font-semibold text-slate-800 dark:text-slate-200">
                   <Calendar className="w-4 h-4 text-blue-600" />
