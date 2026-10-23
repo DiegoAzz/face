@@ -35,7 +35,8 @@ export class MediaController {
         timeout: 10000,
       });
 
-      res.setHeader('Content-Type', response.headers['content-type'] || 'image/jpeg');
+      const contentType = String(response.headers['content-type'] || 'image/jpeg');
+      res.setHeader('Content-Type', contentType);
       res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
       res.setHeader('Access-Control-Allow-Origin', '*');
       res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
