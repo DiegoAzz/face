@@ -77,7 +77,7 @@ export class MediaService {
       });
       return {
         buffer: Buffer.from(res.data),
-        contentType: res.headers['content-type'] || 'image/jpeg',
+        contentType: String(res.headers['content-type'] || 'image/jpeg'),
       };
     } catch (err: any) {
       throw new Error(`Error descargando imagen externa: ${err.message}`);
