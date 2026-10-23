@@ -24,6 +24,10 @@ import {
   ExternalLink,
   Send,
   Scissors,
+  Maximize2,
+  MoveVertical,
+  Sliders,
+  ArrowLeftRight,
 } from 'lucide-react';
 
 interface ReelStudioModalProps {
@@ -105,6 +109,10 @@ export interface TimelineClip {
   duration: number; // en segundos
   transition: 'zoom_in' | 'zoom_out' | 'pan_right' | 'pan_left';
   name: string;
+  scale?: number; // 0.5 a 2.5 (1.0 default)
+  offsetY?: number; // -180 a 180 (mover arriba/abajo en canvas)
+  offsetX?: number; // -150 a 150 (mover izquierda/derecha en canvas)
+  fitMode?: 'cover' | 'contain';
 }
 
 // Limpieza estricta de emojis, símbolos raros y agregadores
@@ -268,6 +276,10 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
       duration: Math.round((targetDuration / 3) * 10) / 10,
       transition: 'zoom_in',
       name: 'Escena 1 (Gancho)',
+      scale: 1.0,
+      offsetY: 0,
+      offsetX: 0,
+      fitMode: 'cover',
     },
     {
       id: 'clip_2',
@@ -275,6 +287,10 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
       duration: Math.round((targetDuration / 3) * 10) / 10,
       transition: 'pan_right',
       name: 'Escena 2 (B-Roll)',
+      scale: 1.0,
+      offsetY: 0,
+      offsetX: 0,
+      fitMode: 'cover',
     },
     {
       id: 'clip_3',
@@ -282,6 +298,10 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
       duration: Math.round((targetDuration - (targetDuration / 3) * 2) * 10) / 10,
       transition: 'zoom_out',
       name: 'Escena 3 (Cierre)',
+      scale: 1.0,
+      offsetY: 0,
+      offsetX: 0,
+      fitMode: 'cover',
     },
   ]);
 
@@ -423,10 +443,70 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
       const updated = [...prev];
       const cur = updated[activeClipIndex];
       if (!cur) return prev;
-      const newDur = Math.max(0.8, Math.min(25, parseFloat((cur.duration + delta).toFixed(1))));
+      const newDur = Math.max(0.6, Math.min(30, parseFloat((cur.duration + delta).toFixed(1))));
       updated[activeClipIndex] = { ...cur, duration: newDur };
       return updated;
     });
+  };
+
+  // Igualar duración de todas las escenas
+  const handleEqualizeClipDurations = () => {
+    if (clips.length === 0) return;
+    const equalSec = parseFloat((targetDuration / clips.length).toFixed(1));
+    setClips((prev) =>
+      prev.map((c) => ({
+        ...c,
+        duration: Math.max(1.0, equalSec),
+      }))
+    );
+    setPublishNotice('✓ Escenas igualadas con el mismo ancho.');
+  };
+
+  // Ajustes de tamaño y encuadre en el Canvas
+  const handleUpdateActiveClipScale = (delta: number) => {
+    setClips((prev) => {
+      const updated = [...prev];
+      const cur = updated[activeClipIndex];
+      if (!cur) return prev;
+      const newScale = Math.max(0.5, Math.min(2.5, parseFloat(((cur.scale || 1.0) + delta).toFixed(2))));
+      updated[activeClipIndex] = { ...cur, scale: newScale };
+      return updated;
+    });
+    drawFrame(currentTime / totalClipsDuration);
+  };
+
+  const handleSetActiveClipScaleExact = (val: number) => {
+    setClips((prev) => {
+      const updated = [...prev];
+      const cur = updated[activeClipIndex];
+      if (!cur) return prev;
+      updated[activeClipIndex] = { ...cur, scale: val };
+      return updated;
+    });
+    drawFrame(currentTime / totalClipsDuration);
+  };
+
+  const handleUpdateActiveClipOffsetY = (val: number) => {
+    setClips((prev) => {
+      const updated = [...prev];
+      const cur = updated[activeClipIndex];
+      if (!cur) return prev;
+      updated[activeClipIndex] = { ...cur, offsetY: val };
+      return updated;
+    });
+    drawFrame(currentTime / totalClipsDuration);
+  };
+
+  const handleToggleFitMode = () => {
+    setClips((prev) => {
+      const updated = [...prev];
+      const cur = updated[activeClipIndex];
+      if (!cur) return prev;
+      const newMode = cur.fitMode === 'contain' ? 'cover' : 'contain';
+      updated[activeClipIndex] = { ...cur, fitMode: newMode };
+      return updated;
+    });
+    drawFrame(currentTime / totalClipsDuration);
   };
 
   // 3. Cambiar efecto de cámara (Ken Burns)
@@ -519,25 +599,84 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
     reader.readAsDataURL(file);
   };
 
-  // Click en la regla / línea de tiempo para mover el cursor (Scrubbing)
-  const handleTimelineClick = (e: React.MouseEvent<HTMLDivElement>) => {
+  // Scrubbing fluido y arrastre del cabezal de tiempo (Playhead) estilo CapCut
+  const [isScrubbing, setIsScrubbing] = useState(false);
+  const isScrubbingRef = useRef(false);
+
+  const seekToClientX = (clientX: number) => {
     if (!timelineRef.current) return;
     const rect = timelineRef.current.getBoundingClientRect();
-    const clickX = e.clientX - rect.left;
-    const percent = Math.max(0, Math.min(clickX / rect.width, 1));
+    const percent = Math.max(0, Math.min((clientX - rect.left) / rect.width, 1));
     const newTime = percent * totalClipsDuration;
     setCurrentTime(newTime);
     drawFrame(percent);
 
-    // Seleccionar automáticamente el clip bajo el cursor
+    // Auto-seleccionar el clip activo bajo el cursor
     let accum = 0;
     for (let i = 0; i < clips.length; i++) {
       accum += clips[i].duration;
-      if (newTime <= accum) {
+      if (newTime <= accum || i === clips.length - 1) {
         setActiveClipIndex(i);
         break;
       }
     }
+  };
+
+  const handleStartScrubbing = (e: React.MouseEvent | React.TouchEvent) => {
+    isScrubbingRef.current = true;
+    setIsScrubbing(true);
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    seekToClientX(clientX);
+
+    const onMove = (moveEv: MouseEvent | TouchEvent) => {
+      if (!isScrubbingRef.current) return;
+      const curX = 'touches' in moveEv ? moveEv.touches[0].clientX : moveEv.clientX;
+      seekToClientX(curX);
+    };
+
+    const onEnd = () => {
+      isScrubbingRef.current = false;
+      setIsScrubbing(false);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onEnd);
+      window.removeEventListener('touchmove', onMove);
+      window.removeEventListener('touchend', onEnd);
+    };
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onEnd);
+    window.addEventListener('touchmove', onMove);
+    window.addEventListener('touchend', onEnd);
+  };
+
+  // Arrastrar el borde derecho de una escena para ponerla más angosta o ancha
+  const handleStartResizeClip = (e: React.MouseEvent, clipIdx: number) => {
+    e.stopPropagation();
+    const startX = e.clientX;
+    const startDur = clips[clipIdx].duration;
+    const rect = timelineRef.current?.getBoundingClientRect();
+    if (!rect) return;
+
+    const onMove = (moveEv: MouseEvent) => {
+      const deltaX = moveEv.clientX - startX;
+      const deltaSec = (deltaX / rect.width) * totalClipsDuration;
+      const newDur = Math.max(0.6, Math.min(35, parseFloat((startDur + deltaSec).toFixed(1))));
+      setClips((prev) => {
+        const updated = [...prev];
+        if (updated[clipIdx]) {
+          updated[clipIdx] = { ...updated[clipIdx], duration: newDur };
+        }
+        return updated;
+      });
+    };
+
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
   };
 
   // Formato MM:SS.S
@@ -643,37 +782,48 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
       ? Math.min(Math.max((currentSec - clipStartSec) / currentClip.duration, 0), 1)
       : 0;
 
-    // 1. DIBUJAR IMAGEN DEL CLIP ACTUAL CON EL EFECTO CONFIGURADO
+    // 1. DIBUJAR IMAGEN DEL CLIP ACTUAL CON EL EFECTO Y ENCUADRE CONFIGURADO
     const img = loadedImagesRef.current[activeIdx];
     if (img && img.complete && img.naturalWidth > 0) {
       ctx.save();
-      let zoom = 1.08;
-      let panX = 0;
-      let panY = 0;
+      const clipScale = currentClip?.scale || 1.0;
+      const clipOffsetX = currentClip?.offsetX || 0;
+      const clipOffsetY = currentClip?.offsetY || 0;
+
+      let zoom = 1.08 * clipScale;
+      let panX = clipOffsetX;
+      let panY = clipOffsetY;
 
       const transition = currentClip?.transition || 'zoom_in';
       if (transition === 'zoom_in') {
-        zoom = 1.05 + clipProgress * 0.14;
+        zoom = (1.05 + clipProgress * 0.14) * clipScale;
       } else if (transition === 'zoom_out') {
-        zoom = 1.19 - clipProgress * 0.12;
+        zoom = (1.19 - clipProgress * 0.12) * clipScale;
       } else if (transition === 'pan_right') {
-        zoom = 1.14;
-        panX = (clipProgress - 0.5) * 60;
+        zoom = 1.14 * clipScale;
+        panX += (clipProgress - 0.5) * 60;
       } else if (transition === 'pan_left') {
-        zoom = 1.14;
-        panX = (0.5 - clipProgress) * 60;
+        zoom = 1.14 * clipScale;
+        panX += (0.5 - clipProgress) * 60;
       }
 
-      ctx.translate(width / 2, height * 0.42);
+      ctx.translate(width / 2 + panX, height * 0.42 + panY);
       ctx.scale(zoom, zoom);
-      ctx.translate(-width / 2, -height * 0.42);
+      ctx.translate(-(width / 2 + panX), -(height * 0.42 + panY));
 
       const aspect = img.naturalWidth / img.naturalHeight;
       let drawW = width;
       let drawH = width / aspect;
-      if (drawH < 860) {
-        drawH = 860;
-        drawW = drawH * aspect;
+      if (currentClip?.fitMode === 'contain') {
+        if (drawH > 800) {
+          drawH = 800;
+          drawW = drawH * aspect;
+        }
+      } else {
+        if (drawH < 860) {
+          drawH = 860;
+          drawW = drawH * aspect;
+        }
       }
       ctx.drawImage(img, (width - drawW) / 2 + panX, panY, drawW, drawH);
       ctx.restore();
@@ -1153,6 +1303,77 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
                 <RefreshCw className="w-4 h-4" />
               </button>
             </div>
+
+            {/* Controles de Tamaño y Encuadre en Canvas */}
+            <div className="w-full max-w-[280px] bg-slate-800/80 p-3 rounded-2xl border border-slate-700/80 mt-3 space-y-2.5 text-xs shadow-lg">
+              <div className="flex items-center justify-between text-slate-200 font-bold text-xs pb-1 border-b border-slate-700/60">
+                <span className="flex items-center space-x-1.5">
+                  <Maximize2 className="w-3.5 h-3.5 text-sky-400" />
+                  <span>Tamaño en Canvas ({clips[activeClipIndex]?.name || `Escena ${activeClipIndex + 1}`})</span>
+                </span>
+                <button
+                  onClick={handleToggleFitMode}
+                  className="text-[9px] px-2 py-0.5 rounded-lg bg-sky-600/30 text-sky-300 font-semibold hover:bg-sky-600/50 transition border border-sky-500/40"
+                  title="Alternar entre llenar pantalla vertical o ver imagen completa"
+                >
+                  {clips[activeClipIndex]?.fitMode === 'contain' ? 'Foto Entera' : 'Llenar'}
+                </button>
+              </div>
+
+              {/* Slider de Zoom / Tamaño */}
+              <div className="space-y-1">
+                <div className="flex items-center justify-between text-[11px] text-slate-300">
+                  <span>Zoom / Tamaño:</span>
+                  <span className="font-mono text-sky-400 font-bold">
+                    {Math.round((clips[activeClipIndex]?.scale || 1.0) * 100)}%
+                  </span>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={() => handleUpdateActiveClipScale(-0.1)}
+                    className="w-6 h-6 flex items-center justify-center rounded-lg bg-slate-700 hover:bg-slate-600 text-white font-bold text-xs"
+                    title="Hacer más pequeña"
+                  >
+                    -
+                  </button>
+                  <input
+                    type="range"
+                    min="0.5"
+                    max="2.2"
+                    step="0.05"
+                    value={clips[activeClipIndex]?.scale || 1.0}
+                    onChange={(e) => handleSetActiveClipScaleExact(parseFloat(e.target.value))}
+                    className="w-full accent-sky-400 cursor-pointer"
+                  />
+                  <button
+                    onClick={() => handleUpdateActiveClipScale(0.1)}
+                    className="w-6 h-6 flex items-center justify-center rounded-lg bg-slate-700 hover:bg-slate-600 text-white font-bold text-xs"
+                    title="Hacer más grande"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+
+              {/* Slider de Posición Vertical (Subir / Bajar cara) */}
+              <div className="space-y-1">
+                <div className="flex items-center justify-between text-[11px] text-slate-300">
+                  <span>Subir / Bajar foto:</span>
+                  <span className="font-mono text-amber-400 font-bold">
+                    {clips[activeClipIndex]?.offsetY || 0}px
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="-160"
+                  max="160"
+                  step="5"
+                  value={clips[activeClipIndex]?.offsetY || 0}
+                  onChange={(e) => handleUpdateActiveClipOffsetY(parseInt(e.target.value))}
+                  className="w-full accent-amber-400 cursor-pointer"
+                />
+              </div>
+            </div>
           </div>
 
           {/* COLUMNA 2: HERRAMIENTAS MINI CAPCUT */}
@@ -1268,7 +1489,7 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
                 </div>
 
                 {/* Acciones de edición */}
-                <div className="flex items-center space-x-1.5">
+                <div className="flex flex-wrap items-center gap-1.5">
                   {/* Botón Dividir (✂️ Split) */}
                   <button
                     onClick={handleSplitActiveClip}
@@ -1279,7 +1500,32 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
                     <span>Dividir</span>
                   </button>
 
-                  {/* Ajuste de duración */}
+                  {/* Poner más angosta / ancha */}
+                  <button
+                    onClick={() => handleAdjustClipDuration(-1.0)}
+                    className="px-2 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-400 hover:text-white text-xs font-semibold border border-slate-700 transition"
+                    title="Poner esta escena más angosta (-1s)"
+                  >
+                    <span>➖ Angosta</span>
+                  </button>
+
+                  <button
+                    onClick={() => handleAdjustClipDuration(1.0)}
+                    className="px-2 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-emerald-400 hover:text-white text-xs font-semibold border border-slate-700 transition"
+                    title="Poner esta escena más ancha (+1s)"
+                  >
+                    <span>➕ Ancha</span>
+                  </button>
+
+                  <button
+                    onClick={handleEqualizeClipDurations}
+                    className="px-2 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-sky-300 hover:text-white text-xs font-semibold border border-slate-700 transition"
+                    title="Igualar el ancho de todas las escenas al mismo tiempo"
+                  >
+                    <span>⚖️ Igualar</span>
+                  </button>
+
+                  {/* Duración numérica fina */}
                   <div className="flex items-center space-x-0.5 bg-slate-800 border border-slate-700 rounded-xl p-0.5">
                     <button
                       onClick={() => handleAdjustClipDuration(-0.5)}
@@ -1338,11 +1584,12 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
               {/* CONTENEDOR MULTI-PISTA CON REGLA Y PLAYHEAD */}
               <div
                 ref={timelineRef}
-                onClick={handleTimelineClick}
-                className="relative bg-slate-950/90 rounded-xl p-2.5 border border-slate-800 cursor-pointer select-none space-y-2 overflow-hidden"
+                onMouseDown={handleStartScrubbing}
+                onTouchStart={handleStartScrubbing}
+                className="relative bg-slate-950/90 rounded-xl p-2.5 border border-slate-800 cursor-ew-resize select-none space-y-2 overflow-hidden"
               >
                 {/* 1. Regla de Tiempo (Segundos 0s, 2s, 4s...) */}
-                <div className="relative h-4 border-b border-slate-800 flex items-center text-[9px] font-mono text-slate-500">
+                <div className="relative h-4 border-b border-slate-800 flex items-center text-[9px] font-mono text-slate-500 pointer-events-none">
                   {Array.from({ length: Math.ceil(totalClipsDuration) + 1 }).map((_, sec) => {
                     if (sec % 2 === 0 || sec === Math.ceil(totalClipsDuration)) {
                       const leftPercent = (sec / totalClipsDuration) * 100;
@@ -1362,7 +1609,7 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
                   })}
                 </div>
 
-                {/* 2. PISTA DE VIDEO (Clips con miniaturas proporcionales) */}
+                {/* 2. PISTA DE VIDEO (Clips con miniaturas proporcionales y tiradores de ancho) */}
                 <div className="space-y-1">
                   <div className="flex items-center justify-between text-[10px] text-slate-400 font-semibold">
                     <span className="flex items-center space-x-1">
@@ -1370,7 +1617,7 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
                       <span>Pista de Video ({clips.length} escenas)</span>
                     </span>
                     <span className="text-sky-400 text-[10px]">
-                      Clic para seleccionar escena y cambiar su foto abajo
+                      Arrastra el borde derecho de cualquier escena para cambiar su ancho
                     </span>
                   </div>
 
@@ -1384,6 +1631,10 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
                           onClick={(e) => {
                             e.stopPropagation();
                             setActiveClipIndex(idx);
+                            let accum = 0;
+                            for (let i = 0; i < idx; i++) accum += clips[i].duration;
+                            setCurrentTime(accum);
+                            drawFrame(accum / totalClipsDuration);
                           }}
                           style={{ width: `${clipWidthPercent}%` }}
                           className={`relative h-full rounded-lg overflow-hidden border-2 transition cursor-pointer flex-shrink-0 group ${
@@ -1393,10 +1644,11 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
                           }`}
                         >
                           <img src={clip.url} alt={clip.name} className="w-full h-full object-cover" />
-                          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/30" />
-                          <div className="absolute top-1 left-1 bg-black/70 px-1 py-0.2 rounded text-[8px] font-bold text-sky-300 truncate max-w-[65%]">
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/30 pointer-events-none" />
+                          <div className="absolute top-1 left-1 bg-black/70 px-1 py-0.2 rounded text-[8px] font-bold text-sky-300 truncate max-w-[65%] pointer-events-none">
                             {idx + 1}. {clip.name}
                           </div>
+
                           {clips.length > 1 && (
                             <button
                               onClick={(e) => {
@@ -1409,8 +1661,18 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
                               <Trash2 className="w-2.5 h-2.5" />
                             </button>
                           )}
-                          <div className="absolute bottom-1 right-1 bg-black/80 px-1 py-0.2 rounded text-[8px] font-mono text-amber-400">
+
+                          <div className="absolute bottom-1 right-2 bg-black/80 px-1 py-0.2 rounded text-[8px] font-mono text-amber-400 pointer-events-none">
                             {clip.duration.toFixed(1)}s
+                          </div>
+
+                          {/* Tirador en borde derecho para poner la escena más angosta o más ancha arrastrando */}
+                          <div
+                            onMouseDown={(e) => handleStartResizeClip(e, idx)}
+                            className="absolute top-0 bottom-0 right-0 w-2.5 bg-sky-500/70 hover:bg-sky-400 cursor-ew-resize flex items-center justify-center z-20 group-hover:opacity-100 transition shadow"
+                            title="Arrastra para alargar o poner más angosta esta escena"
+                          >
+                            <div className="w-0.5 h-4 bg-white rounded-full" />
                           </div>
                         </div>
                       );
@@ -1419,7 +1681,7 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
                 </div>
 
                 {/* 3. PISTA DE SUBTÍTULOS (Subtitles CapCut) */}
-                <div className="space-y-0.5">
+                <div className="space-y-0.5 pointer-events-none">
                   <div className="flex items-center justify-between text-[10px] text-slate-400 font-semibold">
                     <span className="flex items-center space-x-1">
                       <Sparkles className="w-3 h-3 text-yellow-400" />
@@ -1441,7 +1703,7 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
                 </div>
 
                 {/* 4. PISTA DE AUDIO (Música de fondo + Narrador en off) */}
-                <div className="space-y-0.5">
+                <div className="space-y-0.5 pointer-events-none">
                   <div className="flex items-center justify-between text-[10px] text-slate-400 font-semibold">
                     <span className="flex items-center space-x-1">
                       <Music className="w-3 h-3 text-emerald-400" />
@@ -1461,13 +1723,21 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
                   </div>
                 </div>
 
-                {/* 5. CABEZAL DE REPRODUCCIÓN (PLAYHEAD ROJO CAPCUT) */}
+                {/* 5. CABEZAL DE REPRODUCCIÓN (PLAYHEAD ROJO CAPCUT INTERACTIVO) */}
                 <div
-                  className="absolute top-0 bottom-0 w-0.5 bg-red-500 pointer-events-none z-30 transition-[left] duration-75"
-                  style={{ left: `${(currentTime / totalClipsDuration) * 100}%` }}
+                  className="absolute top-0 bottom-0 w-0.5 bg-red-500 pointer-events-none z-30"
+                  style={{
+                    left: `${(currentTime / totalClipsDuration) * 100}%`,
+                    transition: isScrubbing ? 'none' : 'left 60ms linear',
+                  }}
                 >
-                  <div className="w-3 h-3 bg-red-500 rounded-b-md transform -translate-x-[5px] shadow-md shadow-red-500/50 flex items-center justify-center">
-                    <div className="w-1 h-1 bg-white rounded-full" />
+                  <div
+                    onMouseDown={handleStartScrubbing}
+                    onTouchStart={handleStartScrubbing}
+                    className="w-4 h-4 bg-red-500 rounded-b-md transform -translate-x-[7px] shadow-lg shadow-red-500/80 flex items-center justify-center cursor-ew-resize pointer-events-auto"
+                    title="Arrastra el cursor para moverte por el video"
+                  >
+                    <div className="w-1.5 h-1.5 bg-white rounded-full" />
                   </div>
                 </div>
               </div>
