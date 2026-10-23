@@ -173,6 +173,73 @@ export class MetaService {
     return updated;
   }
 
+  async addManualPage(
+    organizationId: string,
+    data: { pageId: string; pageName?: string; pageAccessToken: string }
+  ) {
+    const { pageId, pageAccessToken } = data;
+    if (!pageId || !pageAccessToken) {
+      throw new BadRequestException('El Page ID y el Page Access Token son requeridos.');
+    }
+
+    let resolvedName = data.pageName;
+    try {
+      const res = await axios.get(`https://graph.facebook.com/v19.0/${pageId.trim()}`, {
+        params: {
+          fields: 'id,name',
+          access_token: pageAccessToken.trim(),
+        },
+        timeout: 10000,
+      });
+      if (res.data?.name) {
+        resolvedName = res.data.name;
+      }
+    } catch (err: any) {
+      const metaMsg = err.response?.data?.error?.message || err.message;
+      throw new BadRequestException(`Meta rechazó las credenciales: ${metaMsg}`);
+    }
+
+    const tokenRef = encryptSecret(pageAccessToken.trim());
+
+    const page = await this.prisma.facebookPage.upsert({
+      where: {
+        organizationId_pageId: {
+          organizationId,
+          pageId: pageId.trim(),
+        },
+      },
+      update: {
+        pageName: resolvedName || 'Mi Página de Facebook',
+        tokenRef,
+        publishingEnabled: true,
+        status: 'ACTIVE',
+      },
+      create: {
+        organizationId,
+        pageId: pageId.trim(),
+        pageName: resolvedName || 'Mi Página de Facebook',
+        tokenRef,
+        publishingEnabled: true,
+        status: 'ACTIVE',
+      },
+    });
+
+    await this.prisma.auditLog.create({
+      data: {
+        organizationId,
+        action: 'CONNECT_FACEBOOK_PAGE_MANUAL',
+        targetType: 'FACEBOOK_PAGE',
+        targetId: page.id,
+        metadataRedacted: JSON.stringify({ pageName: page.pageName, pageId: page.pageId }),
+      },
+    });
+
+    return {
+      message: 'Página vinculada y verificada exitosamente en Meta',
+      page,
+    };
+  }
+
   async getDecryptedPageToken(pageDbId: string, organizationId: string): Promise<string> {
     const page = await this.prisma.facebookPage.findFirst({
       where: { id: pageDbId, organizationId },

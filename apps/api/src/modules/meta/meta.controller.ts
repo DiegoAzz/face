@@ -53,6 +53,15 @@ export class PagesController {
     return this.metaService.getPages(user.organizationId);
   }
 
+  @Post('manual')
+  @Roles(UserRole.SUPERADMIN, UserRole.ORG_ADMIN)
+  async addManualPage(
+    @Body() body: { pageId: string; pageName?: string; pageAccessToken: string },
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.metaService.addManualPage(user.organizationId, body);
+  }
+
   @Post(':id/publishing/enable')
   @Roles(UserRole.SUPERADMIN, UserRole.ORG_ADMIN)
   async enablePublishing(
