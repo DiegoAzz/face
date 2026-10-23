@@ -1635,11 +1635,6 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
                 />
               </div>
             </div>
-                    className="w-full accent-blue-500"
-                  />
-                </div>
-              </div>
-            </div>
 
             {/* 6. Botón de Exportación Directa */}
             <div className="pt-1 space-y-2">
