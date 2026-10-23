@@ -66,6 +66,174 @@ const cleanBodyText = (body: string): string => {
     .trim();
 };
 
+const getTopicEmojis = (title: string, excerpt: string, category: string = ''): {
+  titleEmoji: string;
+  bodyEmoji: string;
+} => {
+  const combined = `${title} ${excerpt} ${category}`.toLowerCase();
+
+  // 1. Salud / Nacimientos / Bebés / Medicina
+  if (
+    combined.includes('cuatrillizo') ||
+    combined.includes('nacieron') ||
+    combined.includes('bebé') ||
+    combined.includes('embarazo')
+  ) {
+    return { titleEmoji: '👶✨', bodyEmoji: '🍼' };
+  }
+  if (
+    combined.includes('salud') ||
+    combined.includes('médic') ||
+    combined.includes('hospital') ||
+    combined.includes('cirugía') ||
+    combined.includes('vacuna') ||
+    combined.includes('cáncer')
+  ) {
+    return { titleEmoji: '🩺🏥', bodyEmoji: '💊' };
+  }
+
+  // 2. Seguridad / Atentados / Bombas / Delincuencia / Policía
+  if (
+    combined.includes('carro bomba') ||
+    combined.includes('bomba') ||
+    combined.includes('explosión') ||
+    combined.includes('atentado')
+  ) {
+    return { titleEmoji: '🚨💥', bodyEmoji: '⚠️' };
+  }
+  if (
+    combined.includes('policía') ||
+    combined.includes('captura') ||
+    combined.includes('cárcel') ||
+    combined.includes('delincuent') ||
+    combined.includes('asesinato') ||
+    combined.includes('sicariato') ||
+    combined.includes('disparos')
+  ) {
+    return { titleEmoji: '🚨🚔', bodyEmoji: '🛑' };
+  }
+
+  // 3. Deportes / Fútbol / Ciclismo
+  if (combined.includes('ciclismo') || combined.includes('tour') || combined.includes('vuelta')) {
+    return { titleEmoji: '🚴🔥', bodyEmoji: '🏆' };
+  }
+  if (
+    combined.includes('fútbol') ||
+    combined.includes('futbol') ||
+    combined.includes('gol') ||
+    combined.includes('partido') ||
+    combined.includes('champions') ||
+    combined.includes('liga') ||
+    combined.includes('selección')
+  ) {
+    return { titleEmoji: '⚽🔥', bodyEmoji: '🎯' };
+  }
+  if (combined.includes('deporte') || combined.includes('campeón')) {
+    return { titleEmoji: '🏆🥇', bodyEmoji: '⚡' };
+  }
+
+  // 4. Farándula / Música / Famosos / Cine / Entretenimiento
+  if (
+    combined.includes('música') ||
+    combined.includes('cantante') ||
+    combined.includes('concierto') ||
+    combined.includes('canción')
+  ) {
+    return { titleEmoji: '🎶🎤', bodyEmoji: '✨' };
+  }
+  if (
+    combined.includes('farand') ||
+    combined.includes('chisme') ||
+    combined.includes('famoso') ||
+    combined.includes('actor') ||
+    combined.includes('actriz') ||
+    combined.includes('reality') ||
+    combined.includes('espectáculo')
+  ) {
+    return { titleEmoji: '🎭🌟', bodyEmoji: '👀' };
+  }
+
+  // 5. Economía / Dólar / Dinero / Negocios
+  if (combined.includes('dólar') || combined.includes('dolar') || combined.includes('peso')) {
+    return { titleEmoji: '💵📈', bodyEmoji: '📊' };
+  }
+  if (
+    combined.includes('econom') ||
+    combined.includes('inflación') ||
+    combined.includes('banco') ||
+    combined.includes('impuesto') ||
+    combined.includes('tributaria') ||
+    combined.includes('salario')
+  ) {
+    return { titleEmoji: '💰📊', bodyEmoji: '💼' };
+  }
+
+  // 6. Tecnología / IA / Celulares / Ciencia
+  if (
+    combined.includes('inteligencia artificial') ||
+    combined.includes('ia') ||
+    combined.includes('chatgpt') ||
+    combined.includes('robot')
+  ) {
+    return { titleEmoji: '🤖⚡', bodyEmoji: '💡' };
+  }
+  if (
+    combined.includes('smartphone') ||
+    combined.includes('celular') ||
+    combined.includes('iphone') ||
+    combined.includes('app') ||
+    combined.includes('tecnología')
+  ) {
+    return { titleEmoji: '📱💻', bodyEmoji: '🚀' };
+  }
+  if (combined.includes('espacio') || combined.includes('nasa') || combined.includes('planeta') || combined.includes('ciencia')) {
+    return { titleEmoji: '🪐🔬', bodyEmoji: '✨' };
+  }
+
+  // 7. Clima / Desastres / Medio Ambiente
+  if (
+    combined.includes('lluvia') ||
+    combined.includes('inundación') ||
+    combined.includes('derrumbe') ||
+    combined.includes('clima') ||
+    combined.includes('tormenta')
+  ) {
+    return { titleEmoji: '🌧️⚠️', bodyEmoji: '🌩️' };
+  }
+
+  // 8. Política / Gobierno / Presidente
+  if (
+    combined.includes('petro') ||
+    combined.includes('presidente') ||
+    combined.includes('gobierno') ||
+    combined.includes('congreso') ||
+    combined.includes('alcalde')
+  ) {
+    return { titleEmoji: '🇨🇴🏛️', bodyEmoji: '📌' };
+  }
+
+  // 9. Mundo / Internacional
+  if (combined.includes('mundo') || combined.includes('internacional') || combined.includes('guerra')) {
+    return { titleEmoji: '🌎✈️', bodyEmoji: '🌐' };
+  }
+
+  return { titleEmoji: '🔴📢', bodyEmoji: '👉' };
+};
+
+const formatWithEmojis = (title: string, body: string, source: string = ''): { title: string; body: string } => {
+  const cleanT = decodeHtml(title).replace(/^Actualidad:\s*/i, '').trim();
+  const cleanB = cleanBodyText(body);
+  const emojis = getTopicEmojis(cleanT, cleanB, source);
+
+  const hasTitleEmoji = /^\p{Extended_Pictographic}/u.test(cleanT);
+  const finalTitle = hasTitleEmoji ? cleanT : `${emojis.titleEmoji} ${cleanT}`;
+
+  const hasBodyEmoji = /^\p{Extended_Pictographic}/u.test(cleanB);
+  const finalBody = hasBodyEmoji ? cleanB : `${emojis.bodyEmoji} ${cleanB}`;
+
+  return { title: finalTitle, body: finalBody };
+};
+
 const parseFlags = (flags: any): string[] => {
   if (Array.isArray(flags)) return flags;
   if (typeof flags === 'string') {
@@ -103,11 +271,14 @@ export const EditorialRoomPage: React.FC = () => {
         api.get('/drafts'),
         api.get('/pages'),
       ]);
-      const cleanedDrafts = (draftsRes.data || []).map((d: any) => ({
-        ...d,
-        title: decodeHtml(d.title || '').replace(/^Actualidad:\s*/i, '').trim(),
-        body: cleanBodyText(d.body || ''),
-      }));
+      const cleanedDrafts = (draftsRes.data || []).map((d: any) => {
+        const formatted = formatWithEmojis(d.title || '', d.body || '', d.sourceAttribution || '');
+        return {
+          ...d,
+          title: formatted.title,
+          body: formatted.body,
+        };
+      });
       setDrafts(cleanedDrafts);
       setPages(pagesRes.data);
       if (cleanedDrafts.length > 0 && !selectedDraft) {
@@ -122,8 +293,9 @@ export const EditorialRoomPage: React.FC = () => {
 
   const selectDraft = (draft: any) => {
     setSelectedDraft(draft);
-    setEditTitle(decodeHtml(draft.title || '').replace(/^Actualidad:\s*/i, '').trim());
-    setEditBody(cleanBodyText(draft.body || ''));
+    const formatted = formatWithEmojis(draft.title || '', draft.body || '', draft.sourceAttribution || '');
+    setEditTitle(formatted.title);
+    setEditBody(formatted.body);
     setPublishedSuccessMessage(null);
   };
 
@@ -189,8 +361,12 @@ export const EditorialRoomPage: React.FC = () => {
 
   const handleCopyFullText = async () => {
     if (!selectedDraft) return;
-    const cleanTitle = (editTitle || selectedDraft.title || '').replace(/^Actualidad:\s*/i, '').trim();
-    const textToCopy = `${cleanTitle}\n\n${editBody}\n\n📌 Fuente oficial: ${selectedDraft.sourceAttribution}\n🔗 Más detalles: ${selectedDraft.sourceUrl}\n\n#NoticiasColombia #Tendencia #UltimaHora`;
+    const formatted = formatWithEmojis(
+      editTitle || selectedDraft.title || '',
+      editBody || selectedDraft.body || '',
+      selectedDraft.sourceAttribution || ''
+    );
+    const textToCopy = `${formatted.title}\n\n${formatted.body}\n\n📌 Fuente oficial: ${selectedDraft.sourceAttribution}\n🔗 Conoce más detalles: ${selectedDraft.sourceUrl}\n\n#NoticiasColombia #Tendencia #UltimaHora`;
     try {
       await navigator.clipboard.writeText(textToCopy);
       setCopiedText(true);
