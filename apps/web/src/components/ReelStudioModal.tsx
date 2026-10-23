@@ -250,7 +250,9 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
 
   // Subtítulos virales con ráfagas cortas (2 a 3 palabras por pantalla)
   const subtitleChunks = React.useMemo(() => {
-    const fullText = `${cleanPureTitle}. ${cleanPureBody}`;
+    const charLimit = durationMode === 'youtube_15' ? 240 : durationMode === 'reels_30' ? 520 : 1200;
+    const spokenBody = cleanPureBody.slice(0, charLimit);
+    const fullText = `${cleanPureTitle}. ${spokenBody}`;
     const words = fullText.split(/\s+/).filter(Boolean);
     const chunks: string[] = [];
     const chunkSize = 3;
@@ -258,7 +260,7 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
       chunks.push(words.slice(i, i + chunkSize).join(' '));
     }
     return chunks.length > 0 ? chunks : [cleanPureTitle];
-  }, [cleanPureTitle, cleanPureBody]);
+  }, [cleanPureTitle, cleanPureBody, durationMode]);
 
   // Detección de imágenes sugeridas
   const categoryKey = detectThemeCategory(`${cleanPureTitle} ${cleanPureBody}`);
@@ -306,7 +308,11 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
   ]);
 
   const [activeClipIndex, setActiveClipIndex] = useState<number>(0);
-  const totalClipsDuration = clips.reduce((acc, c) => acc + c.duration, 0) || targetDuration;
+  const clipsSum = clips.reduce((acc, c) => acc + c.duration, 0);
+  // La duración del video NUNCA se limita ni se reduce por debajo del objetivo aunque se eliminen imágenes
+  const totalClipsDuration = clips.length > 0
+    ? Math.max(targetDuration, clipsSum)
+    : targetDuration;
 
   // Buscador de imágenes de Internet
   const initialSearchWord = cleanPureTitle.split(' ').slice(0, 3).join(' ');
@@ -330,6 +336,7 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioDestinationRef = useRef<MediaStreamAudioDestinationNode | null>(null);
   const audioElementRef = useRef<HTMLAudioElement | null>(null);
+  const speechSynthesisUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Cargar páginas de Facebook disponibles
@@ -370,11 +377,11 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
     setDurationMode(mode);
     const newTarget = mode === 'youtube_15' ? 14 : mode === 'reels_30' ? 30 : 55;
     setClips((prev) => {
-      const currentSum = prev.reduce((acc, c) => acc + c.duration, 0) || 1;
-      const ratio = newTarget / currentSum;
+      if (prev.length === 0) return [];
+      const equalSec = parseFloat((newTarget / prev.length).toFixed(1));
       return prev.map((c) => ({
         ...c,
-        duration: Math.max(1.0, parseFloat((c.duration * ratio).toFixed(1))),
+        duration: Math.max(1.0, equalSec),
       }));
     });
   };
@@ -449,7 +456,7 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
     });
   };
 
-  // Igualar duración de todas las escenas
+  // Igualar duración de todas las escenas para que cubran exactamente el targetDuration
   const handleEqualizeClipDurations = () => {
     if (clips.length === 0) return;
     const equalSec = parseFloat((targetDuration / clips.length).toFixed(1));
@@ -459,7 +466,26 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
         duration: Math.max(1.0, equalSec),
       }))
     );
-    setPublishNotice('✓ Escenas igualadas con el mismo ancho.');
+    setPublishNotice('✓ Escenas ajustadas para cubrir exactamente el tiempo total.');
+  };
+
+  // 1 sola foto para todo el video
+  const handleSetSingleImageFullVideo = () => {
+    const activeUrl = clips[activeClipIndex]?.url || clips[0]?.url || initialMainImage;
+    const singleClip: TimelineClip = {
+      id: `clip_${Date.now()}`,
+      url: activeUrl,
+      duration: targetDuration,
+      transition: 'zoom_in',
+      name: 'Foto Completa (Todo el Video)',
+      scale: clips[activeClipIndex]?.scale || 1.0,
+      offsetY: clips[activeClipIndex]?.offsetY || 0,
+      offsetX: clips[activeClipIndex]?.offsetX || 0,
+      fitMode: clips[activeClipIndex]?.fitMode || 'cover',
+    };
+    setClips([singleClip]);
+    setActiveClipIndex(0);
+    setPublishNotice('✓ Ahora 1 sola imagen cubre el 100% de la duración del video.');
   };
 
   // Ajustes de tamaño y encuadre en el Canvas
@@ -522,24 +548,26 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
 
   // 4. Eliminar escena seleccionada
   const handleDeleteActiveClip = () => {
-    if (clips.length <= 1) {
-      alert('Debe haber al menos 1 escena en la línea de tiempo.');
-      return;
-    }
-    setClips((prev) => prev.filter((_, idx) => idx !== activeClipIndex));
-    setActiveClipIndex((prev) => Math.max(0, prev - 1));
-    setPublishNotice('✓ Escena eliminada.');
+    if (clips.length === 0) return;
+    handleDeleteClipByIndex(activeClipIndex);
   };
 
-  // Eliminar escena específica por índice
+  // Eliminar escena específica por índice (permite eliminar hasta 0 imágenes o tener 1 sola imagen)
   const handleDeleteClipByIndex = (idxToDelete: number) => {
-    if (clips.length <= 1) {
-      alert('Debe quedar al menos 1 escena en el video.');
-      return;
-    }
-    setClips((prev) => prev.filter((_, idx) => idx !== idxToDelete));
+    setClips((prev) => {
+      const remaining = prev.filter((_, idx) => idx !== idxToDelete);
+      if (remaining.length === 0) {
+        return [];
+      }
+      // Re-distribuir la duración de las escenas restantes para que sumen el targetDuration
+      const equalSec = parseFloat((targetDuration / remaining.length).toFixed(1));
+      return remaining.map((c) => ({
+        ...c,
+        duration: Math.max(1.0, equalSec),
+      }));
+    });
     setActiveClipIndex((prev) => Math.max(0, Math.min(prev, clips.length - 2)));
-    setPublishNotice('✓ Escena eliminada.');
+    setPublishNotice('✓ Escena eliminada. Duración ajustada al tiempo completo.');
   };
 
   // 5. Añadir nueva escena
@@ -551,9 +579,21 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
       duration: 3.5,
       transition: clips.length % 2 === 0 ? 'zoom_in' : 'pan_right',
       name: `Escena ${clips.length + 1}`,
+      scale: 1.0,
+      offsetY: 0,
+      offsetX: 0,
+      fitMode: 'cover',
     };
-    setClips((prev) => [...prev, newClip]);
+    setClips((prev) => {
+      const updated = [...prev, newClip];
+      const equalSec = parseFloat((targetDuration / updated.length).toFixed(1));
+      return updated.map((c) => ({
+        ...c,
+        duration: Math.max(1.0, equalSec),
+      }));
+    });
     setActiveClipIndex(clips.length);
+    setPublishNotice('✓ Nueva escena añadida.');
   };
 
   // 6. Cambiar foto del clip activo
@@ -698,8 +738,10 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
 
       // Voz en off del narrador limpia y nítida
       if (voiceVolume > 0) {
-        const textToSpeak = `${cleanPureTitle}. ${cleanPureBody.slice(0, 220)}`;
-        const ttsUrl = `/api/media/tts?text=${encodeURIComponent(textToSpeak.slice(0, 250))}&lang=${activeNarrator.lang}&t=${Date.now()}`;
+        // Adaptar la cantidad de texto al formato de duración para que no se quede mudo antes de tiempo
+        const charLimit = durationMode === 'youtube_15' ? 240 : durationMode === 'reels_30' ? 520 : 1200;
+        const textToSpeak = `${cleanPureTitle}. ${cleanPureBody.slice(0, charLimit)}`;
+        const ttsUrl = `/api/media/tts?text=${encodeURIComponent(textToSpeak.slice(0, 300))}&lang=${activeNarrator.lang}&t=${Date.now()}`;
         const audio = new Audio(ttsUrl);
         audio.crossOrigin = 'anonymous';
         audio.playbackRate = activeNarrator.rate;
@@ -724,6 +766,7 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
           if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
             window.speechSynthesis.cancel();
             const utt = new SpeechSynthesisUtterance(textToSpeak);
+            speechSynthesisUtteranceRef.current = utt; // Previene recolección de basura por Chrome
             utt.rate = activeNarrator.rate;
             utt.pitch = activeNarrator.pitch;
             const voices = window.speechSynthesis.getVoices();
@@ -777,59 +820,107 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
       clipStartSec = accum - clips[activeIdx].duration;
     }
 
-    const currentClip = clips[activeIdx];
-    const clipProgress = currentClip && currentClip.duration > 0
-      ? Math.min(Math.max((currentSec - clipStartSec) / currentClip.duration, 0), 1)
-      : 0;
-
-    // 1. DIBUJAR IMAGEN DEL CLIP ACTUAL CON EL EFECTO Y ENCUADRE CONFIGURADO
-    const img = loadedImagesRef.current[activeIdx];
-    if (img && img.complete && img.naturalWidth > 0) {
+    // 1. DIBUJAR IMAGEN O FONDO CINEMATOGRÁFICO DE ESTUDIO (Si no hay fotos o se eliminaron)
+    if (clips.length === 0) {
       ctx.save();
-      const clipScale = currentClip?.scale || 1.0;
-      const clipOffsetX = currentClip?.offsetX || 0;
-      const clipOffsetY = currentClip?.offsetY || 0;
+      const bgGrad = ctx.createLinearGradient(0, 0, 0, height);
+      bgGrad.addColorStop(0, '#020617');
+      bgGrad.addColorStop(0.35, '#0f172a');
+      bgGrad.addColorStop(0.7, '#1e1b4b');
+      bgGrad.addColorStop(1, '#020617');
+      ctx.fillStyle = bgGrad;
+      ctx.fillRect(0, 0, width, height);
 
-      let zoom = 1.08 * clipScale;
-      let panX = clipOffsetX;
-      let panY = clipOffsetY;
-
-      const transition = currentClip?.transition || 'zoom_in';
-      if (transition === 'zoom_in') {
-        zoom = (1.05 + clipProgress * 0.14) * clipScale;
-      } else if (transition === 'zoom_out') {
-        zoom = (1.19 - clipProgress * 0.12) * clipScale;
-      } else if (transition === 'pan_right') {
-        zoom = 1.14 * clipScale;
-        panX += (clipProgress - 0.5) * 60;
-      } else if (transition === 'pan_left') {
-        zoom = 1.14 * clipScale;
-        panX += (0.5 - clipProgress) * 60;
+      // Líneas y ondas dinámicas de emisión
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.25)';
+      ctx.lineWidth = 2.5;
+      for (let i = 0; i < 5; i++) {
+        const y = 340 + i * 75 + Math.sin(progress * 10 + i) * 15;
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.bezierCurveTo(width * 0.35, y - 35, width * 0.65, y + 35, width, y);
+        ctx.stroke();
       }
 
-      ctx.translate(width / 2 + panX, height * 0.42 + panY);
-      ctx.scale(zoom, zoom);
-      ctx.translate(-(width / 2 + panX), -(height * 0.42 + panY));
+      // Emblema central de emisión de noticias
+      const pulse = 1 + Math.sin(progress * 12) * 0.08;
+      ctx.save();
+      ctx.translate(width / 2, 450);
+      ctx.scale(pulse, pulse);
 
-      const aspect = img.naturalWidth / img.naturalHeight;
-      let drawW = width;
-      let drawH = width / aspect;
-      if (currentClip?.fitMode === 'contain') {
-        if (drawH > 800) {
-          drawH = 800;
-          drawW = drawH * aspect;
-        }
-      } else {
-        if (drawH < 860) {
-          drawH = 860;
-          drawW = drawH * aspect;
-        }
-      }
-      ctx.drawImage(img, (width - drawW) / 2 + panX, panY, drawW, drawH);
+      ctx.fillStyle = 'rgba(220, 38, 38, 0.2)';
+      ctx.beginPath();
+      ctx.arc(0, 0, 95, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#ef4444';
+      ctx.beginPath();
+      ctx.arc(0, 0, 75, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '900 24px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('NOTICIA', 0, -4);
+      ctx.font = 'bold 16px system-ui, sans-serif';
+      ctx.fillText('EN VIVO', 0, 22);
+      ctx.restore();
+
       ctx.restore();
     } else {
-      ctx.fillStyle = '#0f172a';
-      ctx.fillRect(0, 0, width, height);
+      const currentClip = clips[activeIdx];
+      const clipProgress = currentClip && currentClip.duration > 0
+        ? Math.min(Math.max((currentSec - clipStartSec) / currentClip.duration, 0), 1)
+        : 0;
+
+      const img = loadedImagesRef.current[activeIdx];
+      if (img && img.complete && img.naturalWidth > 0) {
+        ctx.save();
+        const clipScale = currentClip?.scale || 1.0;
+        const clipOffsetX = currentClip?.offsetX || 0;
+        const clipOffsetY = currentClip?.offsetY || 0;
+
+        let zoom = 1.08 * clipScale;
+        let panX = clipOffsetX;
+        let panY = clipOffsetY;
+
+        const transition = currentClip?.transition || 'zoom_in';
+        if (transition === 'zoom_in') {
+          zoom = (1.05 + clipProgress * 0.14) * clipScale;
+        } else if (transition === 'zoom_out') {
+          zoom = (1.19 - clipProgress * 0.12) * clipScale;
+        } else if (transition === 'pan_right') {
+          zoom = 1.14 * clipScale;
+          panX += (clipProgress - 0.5) * 60;
+        } else if (transition === 'pan_left') {
+          zoom = 1.14 * clipScale;
+          panX += (0.5 - clipProgress) * 60;
+        }
+
+        ctx.translate(width / 2 + panX, height * 0.42 + panY);
+        ctx.scale(zoom, zoom);
+        ctx.translate(-(width / 2 + panX), -(height * 0.42 + panY));
+
+        const aspect = img.naturalWidth / img.naturalHeight;
+        let drawW = width;
+        let drawH = width / aspect;
+        if (currentClip?.fitMode === 'contain') {
+          if (drawH > 800) {
+            drawH = 800;
+            drawW = drawH * aspect;
+          }
+        } else {
+          if (drawH < 860) {
+            drawH = 860;
+            drawW = drawH * aspect;
+          }
+        }
+        ctx.drawImage(img, (width - drawW) / 2 + panX, panY, drawW, drawH);
+        ctx.restore();
+      } else {
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(0, 0, width, height);
+      }
     }
 
     // 2. DEGRADADO CINEMATOGRÁFICO DE CONTRASTE
@@ -1046,6 +1137,7 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       window.speechSynthesis.cancel();
     }
+    speechSynthesisUtteranceRef.current = null;
   };
 
   // EXPORTAR VIDEO COMPLETO CON AUDIO Y SUBTÍTULOS INCORPORADOS
@@ -1305,75 +1397,88 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
             </div>
 
             {/* Controles de Tamaño y Encuadre en Canvas */}
-            <div className="w-full max-w-[280px] bg-slate-800/80 p-3 rounded-2xl border border-slate-700/80 mt-3 space-y-2.5 text-xs shadow-lg">
-              <div className="flex items-center justify-between text-slate-200 font-bold text-xs pb-1 border-b border-slate-700/60">
-                <span className="flex items-center space-x-1.5">
-                  <Maximize2 className="w-3.5 h-3.5 text-sky-400" />
-                  <span>Tamaño en Canvas ({clips[activeClipIndex]?.name || `Escena ${activeClipIndex + 1}`})</span>
-                </span>
-                <button
-                  onClick={handleToggleFitMode}
-                  className="text-[9px] px-2 py-0.5 rounded-lg bg-sky-600/30 text-sky-300 font-semibold hover:bg-sky-600/50 transition border border-sky-500/40"
-                  title="Alternar entre llenar pantalla vertical o ver imagen completa"
-                >
-                  {clips[activeClipIndex]?.fitMode === 'contain' ? 'Foto Entera' : 'Llenar'}
-                </button>
-              </div>
-
-              {/* Slider de Zoom / Tamaño */}
-              <div className="space-y-1">
-                <div className="flex items-center justify-between text-[11px] text-slate-300">
-                  <span>Zoom / Tamaño:</span>
-                  <span className="font-mono text-sky-400 font-bold">
-                    {Math.round((clips[activeClipIndex]?.scale || 1.0) * 100)}%
+            {clips.length > 0 ? (
+              <div className="w-full max-w-[280px] bg-slate-800/80 p-3 rounded-2xl border border-slate-700/80 mt-3 space-y-2.5 text-xs shadow-lg">
+                <div className="flex items-center justify-between text-slate-200 font-bold text-xs pb-1 border-b border-slate-700/60">
+                  <span className="flex items-center space-x-1.5">
+                    <Maximize2 className="w-3.5 h-3.5 text-sky-400" />
+                    <span>Tamaño en Canvas ({clips[activeClipIndex]?.name || `Escena ${activeClipIndex + 1}`})</span>
                   </span>
-                </div>
-                <div className="flex items-center space-x-2">
                   <button
-                    onClick={() => handleUpdateActiveClipScale(-0.1)}
-                    className="w-6 h-6 flex items-center justify-center rounded-lg bg-slate-700 hover:bg-slate-600 text-white font-bold text-xs"
-                    title="Hacer más pequeña"
+                    onClick={handleToggleFitMode}
+                    className="text-[9px] px-2 py-0.5 rounded-lg bg-sky-600/30 text-sky-300 font-semibold hover:bg-sky-600/50 transition border border-sky-500/40"
+                    title="Alternar entre llenar pantalla vertical o ver imagen completa"
                   >
-                    -
+                    {clips[activeClipIndex]?.fitMode === 'contain' ? 'Foto Entera' : 'Llenar'}
                   </button>
+                </div>
+
+                {/* Slider de Zoom / Tamaño */}
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between text-[11px] text-slate-300">
+                    <span>Zoom / Tamaño:</span>
+                    <span className="font-mono text-sky-400 font-bold">
+                      {Math.round((clips[activeClipIndex]?.scale || 1.0) * 100)}%
+                    </span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <button
+                      onClick={() => handleUpdateActiveClipScale(-0.1)}
+                      className="w-6 h-6 flex items-center justify-center rounded-lg bg-slate-700 hover:bg-slate-600 text-white font-bold text-xs"
+                      title="Hacer más pequeña"
+                    >
+                      -
+                    </button>
+                    <input
+                      type="range"
+                      min="0.5"
+                      max="2.2"
+                      step="0.05"
+                      value={clips[activeClipIndex]?.scale || 1.0}
+                      onChange={(e) => handleSetActiveClipScaleExact(parseFloat(e.target.value))}
+                      className="w-full accent-sky-400 cursor-pointer"
+                    />
+                    <button
+                      onClick={() => handleUpdateActiveClipScale(0.1)}
+                      className="w-6 h-6 flex items-center justify-center rounded-lg bg-slate-700 hover:bg-slate-600 text-white font-bold text-xs"
+                      title="Hacer más grande"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+
+                {/* Slider de Posición Vertical (Subir / Bajar cara) */}
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between text-[11px] text-slate-300">
+                    <span>Subir / Bajar foto:</span>
+                    <span className="font-mono text-amber-400 font-bold">
+                      {clips[activeClipIndex]?.offsetY || 0}px
+                    </span>
+                  </div>
                   <input
                     type="range"
-                    min="0.5"
-                    max="2.2"
-                    step="0.05"
-                    value={clips[activeClipIndex]?.scale || 1.0}
-                    onChange={(e) => handleSetActiveClipScaleExact(parseFloat(e.target.value))}
-                    className="w-full accent-sky-400 cursor-pointer"
+                    min="-160"
+                    max="160"
+                    step="5"
+                    value={clips[activeClipIndex]?.offsetY || 0}
+                    onChange={(e) => handleUpdateActiveClipOffsetY(parseInt(e.target.value))}
+                    className="w-full accent-amber-400 cursor-pointer"
                   />
-                  <button
-                    onClick={() => handleUpdateActiveClipScale(0.1)}
-                    className="w-6 h-6 flex items-center justify-center rounded-lg bg-slate-700 hover:bg-slate-600 text-white font-bold text-xs"
-                    title="Hacer más grande"
-                  >
-                    +
-                  </button>
                 </div>
               </div>
-
-              {/* Slider de Posición Vertical (Subir / Bajar cara) */}
-              <div className="space-y-1">
-                <div className="flex items-center justify-between text-[11px] text-slate-300">
-                  <span>Subir / Bajar foto:</span>
-                  <span className="font-mono text-amber-400 font-bold">
-                    {clips[activeClipIndex]?.offsetY || 0}px
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min="-160"
-                  max="160"
-                  step="5"
-                  value={clips[activeClipIndex]?.offsetY || 0}
-                  onChange={(e) => handleUpdateActiveClipOffsetY(parseInt(e.target.value))}
-                  className="w-full accent-amber-400 cursor-pointer"
-                />
+            ) : (
+              <div className="w-full max-w-[280px] bg-slate-800/80 p-3 rounded-2xl border border-slate-700/80 mt-3 space-y-2 text-xs shadow-lg text-center">
+                <div className="text-slate-300 font-bold">📺 Modo Noticia Pura</div>
+                <div className="text-[10px] text-slate-400">Sin imágenes de fondo. El video transmite la noticia completa con locución y gráficos de TV.</div>
+                <button
+                  onClick={() => handleAddClip()}
+                  className="px-3 py-1 bg-sky-600 hover:bg-sky-500 text-white rounded-lg text-xs font-semibold shadow"
+                >
+                  + Añadir Foto
+                </button>
               </div>
-            </div>
+            )}
           </div>
 
           {/* COLUMNA 2: HERRAMIENTAS MINI CAPCUT */}
@@ -1490,10 +1595,20 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
 
                 {/* Acciones de edición */}
                 <div className="flex flex-wrap items-center gap-1.5">
+                  {/* 1 Foto para todo el video */}
+                  <button
+                    onClick={handleSetSingleImageFullVideo}
+                    className="px-2.5 py-1.5 rounded-xl bg-purple-900/40 hover:bg-purple-800 text-purple-300 hover:text-white text-xs font-semibold border border-purple-700/60 transition flex items-center space-x-1"
+                    title="Usar solo 1 imagen para el 100% de todo el video"
+                  >
+                    <span>🖼️ 1 Foto (Todo)</span>
+                  </button>
+
                   {/* Botón Dividir (✂️ Split) */}
                   <button
                     onClick={handleSplitActiveClip}
-                    className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-sky-400 hover:text-white text-xs font-semibold flex items-center space-x-1 border border-slate-700 transition active:scale-95 shadow-sm"
+                    disabled={clips.length === 0}
+                    className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-sky-400 hover:text-white text-xs font-semibold flex items-center space-x-1 border border-slate-700 transition active:scale-95 shadow-sm disabled:opacity-40"
                     title="Dividir escena en la posición actual del cursor"
                   >
                     <Scissors className="w-3.5 h-3.5" />
@@ -1503,7 +1618,8 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
                   {/* Poner más angosta / ancha */}
                   <button
                     onClick={() => handleAdjustClipDuration(-1.0)}
-                    className="px-2 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-400 hover:text-white text-xs font-semibold border border-slate-700 transition"
+                    disabled={clips.length === 0}
+                    className="px-2 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-400 hover:text-white text-xs font-semibold border border-slate-700 transition disabled:opacity-40"
                     title="Poner esta escena más angosta (-1s)"
                   >
                     <span>➖ Angosta</span>
@@ -1511,7 +1627,8 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
 
                   <button
                     onClick={() => handleAdjustClipDuration(1.0)}
-                    className="px-2 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-emerald-400 hover:text-white text-xs font-semibold border border-slate-700 transition"
+                    disabled={clips.length === 0}
+                    className="px-2 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-emerald-400 hover:text-white text-xs font-semibold border border-slate-700 transition disabled:opacity-40"
                     title="Poner esta escena más ancha (+1s)"
                   >
                     <span>➕ Ancha</span>
@@ -1519,50 +1636,55 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
 
                   <button
                     onClick={handleEqualizeClipDurations}
-                    className="px-2 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-sky-300 hover:text-white text-xs font-semibold border border-slate-700 transition"
-                    title="Igualar el ancho de todas las escenas al mismo tiempo"
+                    disabled={clips.length === 0}
+                    className="px-2 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-sky-300 hover:text-white text-xs font-semibold border border-slate-700 transition disabled:opacity-40"
+                    title="Ajustar todas las escenas para que cubran exactamente el tiempo total del video"
                   >
-                    <span>⚖️ Igualar</span>
+                    <span>✨ Ajustar al Total</span>
                   </button>
 
                   {/* Duración numérica fina */}
-                  <div className="flex items-center space-x-0.5 bg-slate-800 border border-slate-700 rounded-xl p-0.5">
-                    <button
-                      onClick={() => handleAdjustClipDuration(-0.5)}
-                      className="px-1.5 py-0.5 text-[11px] font-bold text-slate-300 hover:text-white hover:bg-slate-700 rounded transition"
-                      title="Disminuir 0.5s"
-                    >
-                      -0.5s
-                    </button>
-                    <span className="text-[10px] text-amber-400 font-mono px-1">
-                      {clips[activeClipIndex]?.duration?.toFixed(1)}s
-                    </span>
-                    <button
-                      onClick={() => handleAdjustClipDuration(0.5)}
-                      className="px-1.5 py-0.5 text-[11px] font-bold text-slate-300 hover:text-white hover:bg-slate-700 rounded transition"
-                      title="Aumentar 0.5s"
-                    >
-                      +0.5s
-                    </button>
-                  </div>
+                  {clips.length > 0 && (
+                    <div className="flex items-center space-x-0.5 bg-slate-800 border border-slate-700 rounded-xl p-0.5">
+                      <button
+                        onClick={() => handleAdjustClipDuration(-0.5)}
+                        className="px-1.5 py-0.5 text-[11px] font-bold text-slate-300 hover:text-white hover:bg-slate-700 rounded transition"
+                        title="Disminuir 0.5s"
+                      >
+                        -0.5s
+                      </button>
+                      <span className="text-[10px] text-amber-400 font-mono px-1">
+                        {clips[activeClipIndex]?.duration?.toFixed(1)}s
+                      </span>
+                      <button
+                        onClick={() => handleAdjustClipDuration(0.5)}
+                        className="px-1.5 py-0.5 text-[11px] font-bold text-slate-300 hover:text-white hover:bg-slate-700 rounded transition"
+                        title="Aumentar 0.5s"
+                      >
+                        +0.5s
+                      </button>
+                    </div>
+                  )}
 
                   {/* Efecto de cámara / Ken Burns */}
-                  <select
-                    value={clips[activeClipIndex]?.transition || 'zoom_in'}
-                    onChange={(e) => handleChangeTransition(e.target.value as any)}
-                    className="bg-slate-800 border border-slate-700 rounded-xl px-2 py-1 text-xs text-slate-300 focus:outline-none"
-                    title="Efecto de cámara"
-                  >
-                    <option value="zoom_in">🔍 Zoom In</option>
-                    <option value="zoom_out">🔎 Zoom Out</option>
-                    <option value="pan_right">➡️ Paneo Der</option>
-                    <option value="pan_left">⬅️ Paneo Izq</option>
-                  </select>
+                  {clips.length > 0 && (
+                    <select
+                      value={clips[activeClipIndex]?.transition || 'zoom_in'}
+                      onChange={(e) => handleChangeTransition(e.target.value as any)}
+                      className="bg-slate-800 border border-slate-700 rounded-xl px-2 py-1 text-xs text-slate-300 focus:outline-none"
+                      title="Efecto de cámara"
+                    >
+                      <option value="zoom_in">🔍 Zoom In</option>
+                      <option value="zoom_out">🔎 Zoom Out</option>
+                      <option value="pan_right">➡️ Paneo Der</option>
+                      <option value="pan_left">⬅️ Paneo Izq</option>
+                    </select>
+                  )}
 
                   {/* Eliminar clip */}
                   <button
                     onClick={handleDeleteActiveClip}
-                    disabled={clips.length <= 1}
+                    disabled={clips.length === 0}
                     className="p-1.5 rounded-xl bg-slate-800 hover:bg-red-600/30 text-slate-400 hover:text-red-400 border border-slate-700 transition disabled:opacity-40"
                     title="Eliminar escena seleccionada"
                   >
@@ -1622,34 +1744,51 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
                   </div>
 
                   <div className="flex w-full h-16 rounded-xl overflow-hidden bg-slate-900 border border-slate-800 gap-1 p-1">
-                    {clips.map((clip, idx) => {
-                      const clipWidthPercent = (clip.duration / totalClipsDuration) * 100;
-                      const isSelected = activeClipIndex === idx;
-                      return (
-                        <div
-                          key={clip.id}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setActiveClipIndex(idx);
-                            let accum = 0;
-                            for (let i = 0; i < idx; i++) accum += clips[i].duration;
-                            setCurrentTime(accum);
-                            drawFrame(accum / totalClipsDuration);
-                          }}
-                          style={{ width: `${clipWidthPercent}%` }}
-                          className={`relative h-full rounded-lg overflow-hidden border-2 transition cursor-pointer flex-shrink-0 group ${
-                            isSelected
-                              ? 'border-sky-400 shadow-lg shadow-sky-500/30 z-10'
-                              : 'border-slate-700 hover:border-slate-500 opacity-80 hover:opacity-100'
-                          }`}
+                    {clips.length === 0 ? (
+                      <div className="flex-1 flex items-center justify-between px-4 py-2 bg-slate-950/70 rounded-lg border border-dashed border-slate-700">
+                        <div className="flex items-center space-x-2">
+                          <Film className="w-4 h-4 text-sky-400" />
+                          <span className="text-xs text-slate-300 font-medium">
+                            📺 Modo Noticia Pura (Sin fotos): el video y la locución duran {targetDuration}s completos con gráficos de TV.
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => handleAddClip()}
+                          className="px-2.5 py-1 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold flex items-center space-x-1 shadow"
                         >
-                          <img src={clip.url} alt={clip.name} className="w-full h-full object-cover" />
-                          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/30 pointer-events-none" />
-                          <div className="absolute top-1 left-1 bg-black/70 px-1 py-0.2 rounded text-[8px] font-bold text-sky-300 truncate max-w-[65%] pointer-events-none">
-                            {idx + 1}. {clip.name}
-                          </div>
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Poner Foto</span>
+                        </button>
+                      </div>
+                    ) : (
+                      clips.map((clip, idx) => {
+                        const clipWidthPercent = (clip.duration / totalClipsDuration) * 100;
+                        const isSelected = activeClipIndex === idx;
+                        return (
+                          <div
+                            key={clip.id}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActiveClipIndex(idx);
+                              let accum = 0;
+                              for (let i = 0; i < idx; i++) accum += clips[i].duration;
+                              setCurrentTime(accum);
+                              drawFrame(accum / totalClipsDuration);
+                            }}
+                            style={{ width: `${clipWidthPercent}%` }}
+                            className={`relative h-full rounded-lg overflow-hidden border-2 transition cursor-pointer flex-shrink-0 group ${
+                              isSelected
+                                ? 'border-sky-400 shadow-lg shadow-sky-500/30 z-10'
+                                : 'border-slate-700 hover:border-slate-500 opacity-80 hover:opacity-100'
+                            }`}
+                          >
+                            <img src={clip.url} alt={clip.name} className="w-full h-full object-cover" />
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/30 pointer-events-none" />
+                            <div className="absolute top-1 left-1 bg-black/70 px-1 py-0.2 rounded text-[8px] font-bold text-sky-300 truncate max-w-[65%] pointer-events-none">
+                              {idx + 1}. {clip.name}
+                            </div>
 
-                          {clips.length > 1 && (
+                            {/* Botón de eliminar escena */}
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -1660,23 +1799,23 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
                             >
                               <Trash2 className="w-2.5 h-2.5" />
                             </button>
-                          )}
 
-                          <div className="absolute bottom-1 right-2 bg-black/80 px-1 py-0.2 rounded text-[8px] font-mono text-amber-400 pointer-events-none">
-                            {clip.duration.toFixed(1)}s
-                          </div>
+                            <div className="absolute bottom-1 right-2 bg-black/80 px-1 py-0.2 rounded text-[8px] font-mono text-amber-400 pointer-events-none">
+                              {clip.duration.toFixed(1)}s
+                            </div>
 
-                          {/* Tirador en borde derecho para poner la escena más angosta o más ancha arrastrando */}
-                          <div
-                            onMouseDown={(e) => handleStartResizeClip(e, idx)}
-                            className="absolute top-0 bottom-0 right-0 w-2.5 bg-sky-500/70 hover:bg-sky-400 cursor-ew-resize flex items-center justify-center z-20 group-hover:opacity-100 transition shadow"
-                            title="Arrastra para alargar o poner más angosta esta escena"
-                          >
-                            <div className="w-0.5 h-4 bg-white rounded-full" />
+                            {/* Tirador en borde derecho para poner la escena más angosta o más ancha arrastrando */}
+                            <div
+                              onMouseDown={(e) => handleStartResizeClip(e, idx)}
+                              className="absolute top-0 bottom-0 right-0 w-2.5 bg-sky-500/70 hover:bg-sky-400 cursor-ew-resize flex items-center justify-center z-20 group-hover:opacity-100 transition shadow"
+                              title="Arrastra para alargar o poner más angosta esta escena"
+                            >
+                              <div className="w-0.5 h-4 bg-white rounded-full" />
+                            </div>
                           </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })
+                    )}
                   </div>
                 </div>
 
