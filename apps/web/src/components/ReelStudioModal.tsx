@@ -248,20 +248,6 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
   const cleanPureTitle = cleanNewsForNarration(title || draft?.title || '');
   const cleanPureBody = cleanNewsForNarration(body || draft?.body || '');
 
-  // Subtítulos virales con ráfagas cortas (2 a 3 palabras por pantalla)
-  const subtitleChunks = React.useMemo(() => {
-    const charLimit = durationMode === 'youtube_15' ? 240 : durationMode === 'reels_30' ? 520 : 1200;
-    const spokenBody = cleanPureBody.slice(0, charLimit);
-    const fullText = `${cleanPureTitle}. ${spokenBody}`;
-    const words = fullText.split(/\s+/).filter(Boolean);
-    const chunks: string[] = [];
-    const chunkSize = 3;
-    for (let i = 0; i < words.length; i += chunkSize) {
-      chunks.push(words.slice(i, i + chunkSize).join(' '));
-    }
-    return chunks.length > 0 ? chunks : [cleanPureTitle];
-  }, [cleanPureTitle, cleanPureBody, durationMode]);
-
   // Detección de imágenes sugeridas
   const categoryKey = detectThemeCategory(`${cleanPureTitle} ${cleanPureBody}`);
   const suggestedStock = THEMATIC_IMAGES[categoryKey] || THEMATIC_IMAGES['colombia_actualidad'];
@@ -309,10 +295,23 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
 
   const [activeClipIndex, setActiveClipIndex] = useState<number>(0);
   const clipsSum = clips.reduce((acc, c) => acc + c.duration, 0);
-  // La duración del video NUNCA se limita ni se reduce por debajo del objetivo aunque se eliminen imágenes
+  // La duración del video coincide con donde terminan las escenas para que se exporte hasta ahí y no siga
   const totalClipsDuration = clips.length > 0
-    ? Math.max(targetDuration, clipsSum)
+    ? (clipsSum > 0 ? parseFloat(clipsSum.toFixed(1)) : targetDuration)
     : targetDuration;
+
+  // Subtítulos virales con ráfagas cortas adaptadas exactamente a la duración del video
+  const subtitleChunks = React.useMemo(() => {
+    const wordsCount = Math.max(8, Math.round(totalClipsDuration * 2.4));
+    const fullText = `${cleanPureTitle}. ${cleanPureBody}`;
+    const words = fullText.split(/\s+/).filter(Boolean).slice(0, wordsCount);
+    const chunks: string[] = [];
+    const chunkSize = 3;
+    for (let i = 0; i < words.length; i += chunkSize) {
+      chunks.push(words.slice(i, i + chunkSize).join(' '));
+    }
+    return chunks.length > 0 ? chunks : [cleanPureTitle];
+  }, [cleanPureTitle, cleanPureBody, totalClipsDuration]);
 
   // Buscador de imágenes de Internet
   const initialSearchWord = cleanPureTitle.split(' ').slice(0, 3).join(' ');
@@ -571,18 +570,10 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
   const handleDeleteClipByIndex = (idxToDelete: number) => {
     setClips((prev) => {
       const remaining = prev.filter((_, idx) => idx !== idxToDelete);
-      if (remaining.length === 0) {
-        return [];
-      }
-      // Re-distribuir la duración de las escenas restantes para que sumen el targetDuration
-      const equalSec = parseFloat((targetDuration / remaining.length).toFixed(1));
-      return remaining.map((c) => ({
-        ...c,
-        duration: Math.max(1.0, equalSec),
-      }));
+      return remaining;
     });
     setActiveClipIndex((prev) => Math.max(0, Math.min(prev, clips.length - 2)));
-    setPublishNotice('✓ Escena eliminada. Duración ajustada al tiempo completo.');
+    setPublishNotice('✓ Escena eliminada.');
   };
 
   // 5. Añadir nueva escena
@@ -599,14 +590,7 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
       offsetX: 0,
       fitMode: 'cover',
     };
-    setClips((prev) => {
-      const updated = [...prev, newClip];
-      const equalSec = parseFloat((targetDuration / updated.length).toFixed(1));
-      return updated.map((c) => ({
-        ...c,
-        duration: Math.max(1.0, equalSec),
-      }));
-    });
+    setClips((prev) => [...prev, newClip]);
     setActiveClipIndex(clips.length);
     setPublishNotice('✓ Nueva escena añadida.');
   };
@@ -709,13 +693,14 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
     e.stopPropagation();
     const startX = e.clientX;
     const startDur = clips[clipIdx].duration;
+    const initialTotal = totalClipsDuration;
     const rect = timelineRef.current?.getBoundingClientRect();
     if (!rect) return;
 
     const onMove = (moveEv: MouseEvent) => {
       const deltaX = moveEv.clientX - startX;
-      const deltaSec = (deltaX / rect.width) * totalClipsDuration;
-      const newDur = Math.max(0.6, Math.min(35, parseFloat((startDur + deltaSec).toFixed(1))));
+      const deltaSec = (deltaX / rect.width) * initialTotal;
+      const newDur = Math.max(0.6, Math.min(60, parseFloat((startDur + deltaSec).toFixed(1))));
       setClips((prev) => {
         const updated = [...prev];
         if (updated[clipIdx]) {
@@ -751,12 +736,23 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
       const dest = ctx.createMediaStreamDestination();
       audioDestinationRef.current = dest;
 
+      // Portadora continua silenciosa para mantener vivos los paquetes de audio del MediaRecorder y YouTube
+      const osc = ctx.createOscillator();
+      const carrierGain = ctx.createGain();
+      carrierGain.gain.setValueAtTime(0.00001, ctx.currentTime);
+      osc.connect(carrierGain);
+      carrierGain.connect(dest);
+      try {
+        osc.start();
+      } catch {}
+
       // Voz en off del narrador limpia y nítida
       if (voiceVolume > 0) {
-        // Adaptar la cantidad de texto al formato de duración para que no se quede mudo antes de tiempo
-        const charLimit = durationMode === 'youtube_15' ? 240 : durationMode === 'reels_30' ? 520 : 1200;
-        const textToSpeak = `${cleanPureTitle}. ${cleanPureBody.slice(0, charLimit)}`;
-        const ttsUrl = `/api/media/tts?text=${encodeURIComponent(textToSpeak.slice(0, 300))}&lang=${activeNarrator.lang}&t=${Date.now()}`;
+        // Adaptar la cantidad de texto exactamente a la duración del video
+        const wordsCount = Math.max(8, Math.round(totalClipsDuration * 2.4));
+        const fullText = `${cleanPureTitle}. ${cleanPureBody}`;
+        const spokenText = fullText.split(/\s+/).filter(Boolean).slice(0, wordsCount).join(' ');
+        const ttsUrl = `/api/media/tts?text=${encodeURIComponent(spokenText)}&lang=${activeNarrator.lang}&t=${Date.now()}`;
         const audio = new Audio(ttsUrl);
         audio.crossOrigin = 'anonymous';
         audio.playbackRate = activeNarrator.rate;
@@ -771,16 +767,16 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
             source.connect(voiceGain);
             voiceGain.connect(dest);
             voiceGain.connect(ctx.destination);
-            audio.play();
+            audio.play().catch(() => {});
           } catch {
-            audio.play();
+            audio.play().catch(() => {});
           }
         };
 
         audio.onerror = () => {
           if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
             window.speechSynthesis.cancel();
-            const utt = new SpeechSynthesisUtterance(textToSpeak);
+            const utt = new SpeechSynthesisUtterance(spokenText);
             speechSynthesisUtteranceRef.current = utt; // Previene recolección de basura por Chrome
             utt.rate = activeNarrator.rate;
             utt.pitch = activeNarrator.pitch;
@@ -1234,9 +1230,11 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
       a.href = url;
       const prefix = durationMode === 'youtube_15' ? 'Short_15s' : 'Reel';
       const cleanName = cleanPureTitle.slice(0, 25).replace(/[^a-zA-Z0-9]/g, '_');
-      a.download = `${prefix}_${cleanName}.mp4`;
+      const isMp4 = blob.type.includes('mp4');
+      const ext = isMp4 ? 'mp4' : 'webm';
+      a.download = `${prefix}_${cleanName}.${ext}`;
       a.click();
-      setPublishNotice('✓ ¡Video descargado en tu carpeta de Descargas! Títulos copiados al portapapeles.');
+      setPublishNotice(`✓ ¡Video descargado (${ext.toUpperCase()}) en tu carpeta de Descargas! Títulos copiados al portapapeles.`);
       return blob;
     } catch (err: any) {
       console.error('Error exportando video:', err);

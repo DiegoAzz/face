@@ -244,6 +244,16 @@ export class YouTubeService {
     const accessToken = await this.getFreshAccessToken(channel);
     const videoBuffer = Buffer.from(data.videoBase64, 'base64');
 
+    // Detectar si el contenedor del video es WebM (0x1A 0x45 0xDF 0xA3) o MP4
+    const isWebM =
+      videoBuffer.length >= 4 &&
+      videoBuffer[0] === 0x1a &&
+      videoBuffer[1] === 0x45 &&
+      videoBuffer[2] === 0xdf &&
+      videoBuffer[3] === 0xa3;
+
+    const mimeType = isWebM ? 'video/webm' : 'video/mp4';
+
     // 1. Iniciar sesión de subida resumible en YouTube
     let initRes: any;
     try {
@@ -269,7 +279,7 @@ export class YouTubeService {
           headers: {
             Authorization: `Bearer ${accessToken}`,
             'Content-Type': 'application/json; charset=UTF-8',
-            'X-Upload-Content-Type': 'video/mp4',
+            'X-Upload-Content-Type': mimeType,
             'X-Upload-Content-Length': videoBuffer.length,
           },
         }
@@ -289,7 +299,7 @@ export class YouTubeService {
     try {
       uploadRes = await axios.put(uploadUrl, videoBuffer, {
         headers: {
-          'Content-Type': 'video/mp4',
+          'Content-Type': mimeType,
           'Content-Length': videoBuffer.length,
         },
         maxContentLength: Infinity,
