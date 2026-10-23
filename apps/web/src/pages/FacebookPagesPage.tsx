@@ -18,10 +18,14 @@ export const FacebookPagesPage: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Modal para credenciales de Google OAuth
+  // Modal para credenciales de Google OAuth (persistente en localStorage)
   const [showYtCredsModal, setShowYtCredsModal] = useState(false);
-  const [ytClientId, setYtClientId] = useState('');
-  const [ytClientSecret, setYtClientSecret] = useState('');
+  const [ytClientId, setYtClientId] = useState(
+    () => localStorage.getItem('NEWSFLOW_YT_CLIENT_ID') || ''
+  );
+  const [ytClientSecret, setYtClientSecret] = useState(
+    () => localStorage.getItem('NEWSFLOW_YT_CLIENT_SECRET') || ''
+  );
   const [savingCreds, setSavingCreds] = useState(false);
 
   useEffect(() => {
@@ -37,12 +41,17 @@ export const FacebookPagesPage: React.FC = () => {
 
   const loadAccounts = async () => {
     try {
-      const [pagesRes, ytRes] = await Promise.allSettled([
+      const [pagesRes, ytRes, ytSettingsRes] = await Promise.allSettled([
         api.get('/pages'),
         api.get('/youtube/channels'),
+        api.get('/youtube/settings'),
       ]);
       if (pagesRes.status === 'fulfilled') setPages(pagesRes.value.data);
       if (ytRes.status === 'fulfilled') setYoutubeChannels(ytRes.value.data);
+      if (ytSettingsRes.status === 'fulfilled' && ytSettingsRes.value.data?.clientId) {
+        setYtClientId(ytSettingsRes.value.data.clientId);
+        localStorage.setItem('NEWSFLOW_YT_CLIENT_ID', ytSettingsRes.value.data.clientId);
+      }
     } catch (e) {
       console.error('Error cargando cuentas:', e);
     } finally {
@@ -54,6 +63,8 @@ export const FacebookPagesPage: React.FC = () => {
     e.preventDefault();
     setSavingCreds(true);
     try {
+      localStorage.setItem('NEWSFLOW_YT_CLIENT_ID', ytClientId.trim());
+      localStorage.setItem('NEWSFLOW_YT_CLIENT_SECRET', ytClientSecret.trim());
       await api.post('/youtube/settings', {
         clientId: ytClientId.trim(),
         clientSecret: ytClientSecret.trim(),
@@ -70,6 +81,11 @@ export const FacebookPagesPage: React.FC = () => {
 
   const handleConnectYouTube = async () => {
     try {
+      const localId = localStorage.getItem('NEWSFLOW_YT_CLIENT_ID');
+      const localSec = localStorage.getItem('NEWSFLOW_YT_CLIENT_SECRET');
+      if (localId && localSec) {
+        await api.post('/youtube/settings', { clientId: localId, clientSecret: localSec }).catch(() => {});
+      }
       const res = await api.get('/youtube/auth/start');
       if (res.data?.url) {
         window.location.href = res.data.url;

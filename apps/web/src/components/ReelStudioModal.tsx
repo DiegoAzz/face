@@ -102,12 +102,28 @@ const NARRATORS: NarratorOption[] = [
   },
 ];
 
+// Efectos de Animación y Movimiento para las Imágenes (CapCut / Ken Burns / Motion)
+export const IMAGE_EFFECTS = [
+  { id: 'zoom_in', label: '🔍 Zoom In (Acercar)', desc: 'Acercamiento cinematográfico suave' },
+  { id: 'zoom_out', label: '🔎 Zoom Out (Alejar)', desc: 'Alejamiento suave de cámara' },
+  { id: 'pan_right', label: '➡️ Paneo Derecha', desc: 'Desplazamiento horizontal fluido a la derecha' },
+  { id: 'pan_left', label: '⬅️ Paneo Izquierda', desc: 'Desplazamiento horizontal fluido a la izquierda' },
+  { id: 'pan_up', label: '⬆️ Paneo Hacia Arriba', desc: 'Desplazamiento vertical suave hacia arriba' },
+  { id: 'pan_down', label: '⬇️ Paneo Hacia Abajo', desc: 'Desplazamiento vertical suave hacia abajo' },
+  { id: 'zoom_pan', label: '🔄 Ken Burns (Zoom + Diagonal)', desc: 'Acercamiento con movimiento diagonal' },
+  { id: 'pulse', label: '💓 Pulso Dinámico', desc: 'Efecto de impacto y énfasis rítmico' },
+  { id: 'shake', label: '⚡ Cámara en Mano', desc: 'Movimiento orgánico de reportaje en vivo' },
+  { id: 'static', label: '⏹️ Foto Fija (Estática)', desc: 'Sin movimiento de cámara' },
+] as const;
+
+export type ImageEffectType = typeof IMAGE_EFFECTS[number]['id'];
+
 // Estructura de Clip para la Línea de Tiempo estilo CapCut
 export interface TimelineClip {
   id: string;
   url: string;
   duration: number; // en segundos
-  transition: 'zoom_in' | 'zoom_out' | 'pan_right' | 'pan_left';
+  transition: ImageEffectType;
   name: string;
   scale?: number; // 0.5 a 2.5 (1.0 default)
   offsetY?: number; // -180 a 180 (mover arriba/abajo en canvas)
@@ -549,14 +565,24 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
     drawFrame(currentTime / totalClipsDuration);
   };
 
-  // 3. Cambiar efecto de cámara (Ken Burns)
-  const handleChangeTransition = (tr: 'zoom_in' | 'zoom_out' | 'pan_right' | 'pan_left') => {
+  // 3. Cambiar efecto de animación o movimiento de cámara
+  const handleChangeTransition = (tr: ImageEffectType) => {
     setClips((prev) => {
       const updated = [...prev];
       if (updated[activeClipIndex]) {
         updated[activeClipIndex] = { ...updated[activeClipIndex], transition: tr };
       }
       return updated;
+    });
+    drawFrame(currentTime / totalClipsDuration);
+  };
+
+  const handleApplyTransitionToAll = (tr: ImageEffectType) => {
+    const effObj = IMAGE_EFFECTS.find((e) => e.id === tr);
+    setClips((prev) => prev.map((c) => ({ ...c, transition: tr })));
+    setPublishNotice(`✓ Efecto "${effObj?.label || tr}" aplicado a todas las escenas.`);
+    drawFrame(currentTime / totalClipsDuration);
+  };
     });
   };
 
@@ -897,15 +923,45 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
 
         const transition = currentClip?.transition || 'zoom_in';
         if (transition === 'zoom_in') {
-          zoom = (1.05 + clipProgress * 0.14) * clipScale;
+          // Acercamiento cinematográfico
+          zoom = (1.05 + clipProgress * 0.18) * clipScale;
         } else if (transition === 'zoom_out') {
-          zoom = (1.19 - clipProgress * 0.12) * clipScale;
+          // Alejamiento suave de cámara
+          zoom = (1.23 - clipProgress * 0.18) * clipScale;
         } else if (transition === 'pan_right') {
-          zoom = 1.14 * clipScale;
-          panX += (clipProgress - 0.5) * 60;
+          // Desplazamiento horizontal a la derecha
+          zoom = 1.15 * clipScale;
+          panX += (clipProgress - 0.5) * 80;
         } else if (transition === 'pan_left') {
-          zoom = 1.14 * clipScale;
-          panX += (0.5 - clipProgress) * 60;
+          // Desplazamiento horizontal a la izquierda
+          zoom = 1.15 * clipScale;
+          panX += (0.5 - clipProgress) * 80;
+        } else if (transition === 'pan_up') {
+          // Paneo vertical hacia arriba
+          zoom = 1.15 * clipScale;
+          panY += (clipProgress - 0.5) * 70;
+        } else if (transition === 'pan_down') {
+          // Paneo vertical hacia abajo
+          zoom = 1.15 * clipScale;
+          panY += (0.5 - clipProgress) * 70;
+        } else if (transition === 'zoom_pan') {
+          // Zoom + Paneo Diagonal combinado (Estilo Ken Burns documental)
+          zoom = (1.06 + clipProgress * 0.16) * clipScale;
+          panX += (clipProgress - 0.5) * 60;
+          panY += (clipProgress - 0.5) * 50;
+        } else if (transition === 'pulse') {
+          // Pulso dinámico / Latido rítmico
+          const pulseFactor = Math.sin(clipProgress * Math.PI * 2);
+          zoom = (1.10 + pulseFactor * 0.08) * clipScale;
+        } else if (transition === 'shake') {
+          // Cámara en mano (movimiento orgánico sutil)
+          zoom = 1.12 * clipScale;
+          const shakeFactor = Math.sin(clipProgress * Math.PI * 6);
+          panX += shakeFactor * 8;
+          panY += Math.cos(clipProgress * Math.PI * 4) * 6;
+        } else if (transition === 'static') {
+          // Foto fija sin movimiento
+          zoom = 1.05 * clipScale;
         }
 
         ctx.translate(width / 2 + panX, height * 0.42 + panY);
@@ -1546,6 +1602,39 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
                     className="w-full accent-amber-400 cursor-pointer"
                   />
                 </div>
+
+                {/* Selector de Efecto de Movimiento / Animación */}
+                <div className="space-y-1.5 pt-2 border-t border-slate-700/60">
+                  <div className="flex items-center justify-between text-[11px] text-slate-300">
+                    <span className="flex items-center space-x-1 font-semibold">
+                      <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Efecto de Movimiento:</span>
+                    </span>
+                    {clips.length > 1 && (
+                      <button
+                        onClick={() => handleApplyTransitionToAll(clips[activeClipIndex]?.transition || 'zoom_in')}
+                        className="text-[10px] text-sky-400 hover:text-sky-300 underline font-medium cursor-pointer"
+                        title="Aplicar este mismo efecto de cámara a todas las escenas"
+                      >
+                        A todas las escenas
+                      </button>
+                    )}
+                  </div>
+                  <select
+                    value={clips[activeClipIndex]?.transition || 'zoom_in'}
+                    onChange={(e) => handleChangeTransition(e.target.value as any)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-sky-500 font-medium"
+                  >
+                    {IMAGE_EFFECTS.map((eff) => (
+                      <option key={eff.id} value={eff.id}>
+                        {eff.label}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[10px] text-slate-400 italic">
+                    {IMAGE_EFFECTS.find((e) => e.id === (clips[activeClipIndex]?.transition || 'zoom_in'))?.desc}
+                  </p>
+                </div>
               </div>
             ) : (
               <div className="w-full max-w-[280px] bg-slate-800/80 p-3 rounded-2xl border border-slate-700/80 mt-3 space-y-2 text-xs shadow-lg text-center">
@@ -1746,19 +1835,23 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
                     </div>
                   )}
 
-                  {/* Efecto de cámara / Ken Burns */}
+                  {/* Efecto de cámara / Animación */}
                   {clips.length > 0 && (
-                    <select
-                      value={clips[activeClipIndex]?.transition || 'zoom_in'}
-                      onChange={(e) => handleChangeTransition(e.target.value as any)}
-                      className="bg-slate-800 border border-slate-700 rounded-xl px-2 py-1 text-xs text-slate-300 focus:outline-none"
-                      title="Efecto de cámara"
-                    >
-                      <option value="zoom_in">🔍 Zoom In</option>
-                      <option value="zoom_out">🔎 Zoom Out</option>
-                      <option value="pan_right">➡️ Paneo Der</option>
-                      <option value="pan_left">⬅️ Paneo Izq</option>
-                    </select>
+                    <div className="flex items-center space-x-1">
+                      <Sparkles className="w-3.5 h-3.5 text-amber-400 hidden sm:inline" />
+                      <select
+                        value={clips[activeClipIndex]?.transition || 'zoom_in'}
+                        onChange={(e) => handleChangeTransition(e.target.value as any)}
+                        className="bg-slate-800 border border-slate-700 rounded-xl px-2.5 py-1 text-xs text-slate-200 font-medium focus:outline-none focus:ring-1 focus:ring-sky-500 max-w-[170px] truncate"
+                        title="Efecto de movimiento para la escena seleccionada"
+                      >
+                        {IMAGE_EFFECTS.map((eff) => (
+                          <option key={eff.id} value={eff.id}>
+                            {eff.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   )}
 
                   {/* Eliminar clip */}

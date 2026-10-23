@@ -27,6 +27,18 @@ export class YouTubeController {
     return { url };
   }
 
+  @Get('settings')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.SUPERADMIN, UserRole.ORG_ADMIN)
+  async getSettings(@CurrentUser() user: AuthenticatedUser) {
+    const creds = await this.youtubeService.getCredentials(user.organizationId);
+    return {
+      configured: Boolean(creds.clientId && creds.clientSecret),
+      clientId: creds.clientId,
+      redirectUri: creds.redirectUri,
+    };
+  }
+
   @Post('settings')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.SUPERADMIN, UserRole.ORG_ADMIN)
