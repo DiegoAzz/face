@@ -264,18 +264,24 @@ export class NewsService implements OnModuleInit {
       },
     ];
 
-    if (orgId) {
+    let targetOrgId = orgId;
+    if (!targetOrgId) {
+      const org = await this.prisma.organization.findFirst();
+      if (org) targetOrgId = org.id;
+    }
+
+    if (targetOrgId) {
       for (const def of defaultSources) {
         await this.prisma.newsSource.upsert({
           where: {
             organizationId_url: {
-              organizationId: orgId,
+              organizationId: targetOrgId,
               url: def.url,
             },
           },
-          update: { category: def.category },
+          update: { category: def.category, name: def.name },
           create: {
-            organizationId: orgId,
+            organizationId: targetOrgId,
             name: def.name,
             type: 'RSS',
             url: def.url,
@@ -286,11 +292,19 @@ export class NewsService implements OnModuleInit {
           },
         });
       }
+
+      await this.prisma.newsSource.updateMany({
+        where: {
+          organizationId: targetOrgId,
+          category: { in: ['Colombia', 'General'] },
+        },
+        data: { category: 'Actualidad' },
+      });
     }
 
     const whereClause: any = { enabled: true };
-    if (orgId) {
-      whereClause.organizationId = orgId;
+    if (targetOrgId) {
+      whereClause.organizationId = targetOrgId;
     }
 
     const sources = await this.prisma.newsSource.findMany({

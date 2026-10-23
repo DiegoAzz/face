@@ -55,58 +55,208 @@ export const NewsFeedPage: React.FC = () => {
   };
 
   const getCategory = (cluster: any): string => {
-    const raw = cluster.storyClusterItems?.[0]?.item?.source?.category || '';
-    const lower = raw.toLowerCase();
+    const primaryItem = cluster.storyClusterItems?.[0]?.item;
+    const title = (primaryItem?.title || cluster.title || '').toLowerCase();
+    const excerpt = (primaryItem?.excerpt || '').toLowerCase();
+    const url = (primaryItem?.canonicalUrl || '').toLowerCase();
+    const rawCat = (primaryItem?.source?.category || '').toLowerCase();
+    const combined = `${title} ${excerpt} ${url} ${rawCat}`;
+
+    // 1. Salud y Bienestar (cuatrillizos, medicina, hospitales, tratamientos)
     if (
-      lower.includes('tecno') ||
-      lower.includes('innova') ||
-      lower.includes('software') ||
-      lower.includes('ia') ||
-      lower.includes('gadget') ||
-      lower.includes('app')
-    )
-      return 'Tecnología';
-    if (lower.includes('deporte') || lower.includes('futbol') || lower.includes('ciclismo'))
-      return 'Deportes';
-    if (
-      lower.includes('entreten') ||
-      lower.includes('gente') ||
-      lower.includes('farand') ||
-      lower.includes('chisme') ||
-      lower.includes('famoso') ||
-      lower.includes('espectaculo')
-    )
-      return 'Entretenimiento';
-    if (
-      lower.includes('econom') ||
-      lower.includes('finanz') ||
-      lower.includes('negocio') ||
-      lower.includes('empresa') ||
-      lower.includes('dolar')
-    )
-      return 'Economía';
-    if (lower.includes('salud') || lower.includes('medicina') || lower.includes('bienestar'))
+      url.includes('/salud') ||
+      rawCat === 'salud' ||
+      combined.includes('cuatrillizo') ||
+      combined.includes('nacieron') ||
+      combined.includes('embarazo') ||
+      combined.includes('milagro médico') ||
+      combined.includes('médic') ||
+      combined.includes('medic') ||
+      combined.includes('hospital') ||
+      combined.includes('clínica') ||
+      combined.includes('clinica') ||
+      combined.includes('cirugía') ||
+      combined.includes('cirugia') ||
+      combined.includes('enfermedad') ||
+      combined.includes('cáncer') ||
+      combined.includes('vacuna') ||
+      combined.includes('paciente')
+    ) {
       return 'Salud';
+    }
+
+    // 2. Deportes
     if (
-      lower.includes('ciencia') ||
-      lower.includes('ambiente') ||
-      lower.includes('clima') ||
-      lower.includes('planeta')
-    )
+      url.includes('/deportes') ||
+      rawCat === 'deportes' ||
+      combined.includes('deporte') ||
+      combined.includes('fútbol') ||
+      combined.includes('futbol') ||
+      combined.includes('partido') ||
+      combined.includes('gol') ||
+      combined.includes('ciclismo') ||
+      combined.includes('tour') ||
+      combined.includes('champions') ||
+      combined.includes('copa libertadores') ||
+      combined.includes('millonarios') ||
+      combined.includes('atletico nacional') ||
+      combined.includes('james rodríguez') ||
+      combined.includes('luis díaz') ||
+      combined.includes('estadio') ||
+      combined.includes('selección colombia')
+    ) {
+      return 'Deportes';
+    }
+
+    // 3. Entretenimiento / Farándula
+    if (
+      url.includes('/gente') ||
+      url.includes('/farandula') ||
+      url.includes('/entretenimiento') ||
+      rawCat === 'entretenimiento' ||
+      combined.includes('farandula') ||
+      combined.includes('farándula') ||
+      combined.includes('chisme') ||
+      combined.includes('shakira') ||
+      combined.includes('karol g') ||
+      combined.includes('maluma') ||
+      combined.includes('concierto') ||
+      combined.includes('actor') ||
+      combined.includes('actriz') ||
+      combined.includes('cantante') ||
+      combined.includes('novela') ||
+      combined.includes('reality') ||
+      combined.includes('masterchef') ||
+      combined.includes('influencer')
+    ) {
+      return 'Entretenimiento';
+    }
+
+    // 4. Economía y Negocios
+    if (
+      url.includes('/economia') ||
+      url.includes('/negocios') ||
+      rawCat === 'economía' ||
+      rawCat === 'economia' ||
+      combined.includes('dólar') ||
+      combined.includes('dolar') ||
+      combined.includes('inflación') ||
+      combined.includes('inflacion') ||
+      combined.includes('banco de la república') ||
+      combined.includes('tasa de interés') ||
+      combined.includes('ecopetrol') ||
+      combined.includes('pib') ||
+      combined.includes('reforma tributaria') ||
+      combined.includes('salario mínimo') ||
+      combined.includes('bursátil') ||
+      combined.includes('petróleo')
+    ) {
+      return 'Economía';
+    }
+
+    // 5. Tecnología e IA (usar palabras completas, NUNCA 'ia' como subcadena suelta)
+    if (
+      url.includes('/tecnosfera') ||
+      url.includes('/tecnologia') ||
+      url.includes('/innovacion') ||
+      rawCat === 'tecnología' ||
+      rawCat === 'tecnologia' ||
+      combined.includes('inteligencia artificial') ||
+      combined.includes('chatgpt') ||
+      combined.includes('openai') ||
+      combined.includes('smartphone') ||
+      combined.includes('iphone') ||
+      combined.includes('apple') ||
+      combined.includes('google') ||
+      combined.includes('ciberseguridad') ||
+      combined.includes('videojuego') ||
+      combined.includes('playstation') ||
+      combined.includes('robótica') ||
+      /\b(ia|ai|gadget)\b/i.test(title)
+    ) {
+      return 'Tecnología';
+    }
+
+    // 6. Ciencia y Ambiente
+    if (
+      url.includes('/ciencia') ||
+      url.includes('/ambiente') ||
+      rawCat === 'ciencia' ||
+      combined.includes('planeta') ||
+      combined.includes('espacio') ||
+      combined.includes('astronomía') ||
+      combined.includes('biodiversidad') ||
+      combined.includes('fauna') ||
+      combined.includes('flora') ||
+      combined.includes('cambio climático') ||
+      combined.includes('deforestación') ||
+      combined.includes('medio ambiente')
+    ) {
       return 'Ciencia';
-    if (lower.includes('mundo') || lower.includes('internac') || lower.includes('global'))
-      return 'Mundo';
-    if (lower.includes('cultura') || lower.includes('tendencia') || lower.includes('estilo'))
-      return 'Cultura';
+    }
+
+    // 7. Mundo
     if (
-      lower.includes('colombia') ||
-      lower.includes('actual') ||
-      lower.includes('politica') ||
-      lower.includes('nacion') ||
-      lower.includes('justicia')
-    )
+      url.includes('/mundo') ||
+      url.includes('/internacional') ||
+      rawCat === 'mundo' ||
+      combined.includes('ucrania') ||
+      combined.includes('rusia') ||
+      combined.includes('estados unidos') ||
+      combined.includes('trump') ||
+      combined.includes('biden') ||
+      combined.includes('israel') ||
+      combined.includes('gaza') ||
+      combined.includes('maduro') ||
+      combined.includes('venezuela')
+    ) {
+      return 'Mundo';
+    }
+
+    // 8. Cultura y Estilo
+    if (
+      url.includes('/cultura') ||
+      url.includes('/estilo') ||
+      rawCat === 'cultura' ||
+      combined.includes('literatura') ||
+      combined.includes('libro') ||
+      combined.includes('museo') ||
+      combined.includes('gastronomía') ||
+      combined.includes('turismo') ||
+      combined.includes('moda')
+    ) {
+      return 'Cultura';
+    }
+
+    // 9. Actualidad / Colombia (atentados, seguridad, política, ciudades)
+    if (
+      url.includes('/colombia') ||
+      url.includes('/politica') ||
+      url.includes('/justicia') ||
+      url.includes('/bogota') ||
+      rawCat === 'actualidad' ||
+      rawCat === 'colombia' ||
+      combined.includes('carro bomba') ||
+      combined.includes('atentado') ||
+      combined.includes('peaje') ||
+      combined.includes('policía') ||
+      combined.includes('ejército') ||
+      combined.includes('captura') ||
+      combined.includes('heridos') ||
+      combined.includes('gobierno') ||
+      combined.includes('presidente') ||
+      combined.includes('petro') ||
+      combined.includes('congreso') ||
+      combined.includes('alcalde') ||
+      combined.includes('fiscalía') ||
+      combined.includes('casanare') ||
+      combined.includes('medellín') ||
+      combined.includes('bogotá')
+    ) {
       return 'Actualidad';
-    return raw || 'General';
+    }
+
+    return 'Actualidad';
   };
 
   const categoryBadges: { id: string; label: string; icon: string }[] = [
