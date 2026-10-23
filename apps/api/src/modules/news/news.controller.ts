@@ -47,12 +47,25 @@ export class MediaController {
   }
 
   @Get('tts')
-  async getTts(@Query('text') text: string, @Res() res: Response) {
+  async getTts(
+    @Query('text') text: string,
+    @Query('lang') lang: string,
+    @Res() res: Response
+  ) {
     if (!text) {
       return res.status(400).send('Texto requerido');
     }
-    const clean = encodeURIComponent(text.slice(0, 250));
-    const url = `https://translate.google.com/translate_tts?ie=UTF-8&tl=es&client=tw-ob&q=${clean}`;
+    // Limpieza profunda de emojis, símbolos raros y formatos para que el narrador lea exclusivamente la noticia pura
+    const stripped = text
+      .replace(/([\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF])/g, '')
+      .replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F700}-\u{1F77F}\u{1F780}-\u{1F7FF}\u{1F800}-\u{1F8FF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA6F}\u{1FA70}-\u{1FAFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{2300}-\u{23FF}\u{2B50}\u{FE0F}]/gu, '')
+      .replace(/[*_#~`\\/|•–—«»]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    const selectedLang = ['es-US', 'es', 'es-ES', 'es-MX'].includes(lang) ? lang : 'es-US';
+    const clean = encodeURIComponent(stripped.slice(0, 260));
+    const url = `https://translate.google.com/translate_tts?ie=UTF-8&tl=${selectedLang}&client=tw-ob&q=${clean}`;
     try {
       const httpClient = createSafeHttpClient();
       const response = await httpClient.get(url, {
@@ -70,6 +83,48 @@ export class MediaController {
       return response.data.pipe(res);
     } catch {
       return res.status(500).send('Error generando audio TTS');
+    }
+  }
+
+  @Get('search-images')
+  async searchImages(@Query('q') query: string) {
+    if (!query || !query.trim()) {
+      return [];
+    }
+    const cleanQ = encodeURIComponent(query.trim().slice(0, 80));
+    try {
+      const httpClient = createSafeHttpClient();
+      const wikiUrl = `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${cleanQ}&gsrnamespace=6&gsrlimit=16&prop=imageinfo&iiprop=url&iiurlwidth=800&format=json`;
+      const response = await httpClient.get(wikiUrl, {
+        headers: {
+          'User-Agent': 'NewsFlowAI/1.0 (https://newsflow.ai; contact@newsflow.ai)',
+        },
+        timeout: 8000,
+      });
+
+      const pages = response.data?.query?.pages || {};
+      const results: { url: string; thumbUrl: string; title: string }[] = [];
+
+      for (const pageId of Object.keys(pages)) {
+        const item = pages[pageId];
+        const info = item?.imageinfo?.[0];
+        if (info && (info.thumburl || info.url)) {
+          const rawUrl = info.thumburl || info.url;
+          const lower = rawUrl.toLowerCase();
+          if (!lower.endsWith('.svg') && !lower.endsWith('.ogg') && !lower.endsWith('.pdf')) {
+            results.push({
+              url: `/api/media/proxy?url=${encodeURIComponent(rawUrl)}`,
+              thumbUrl: `/api/media/proxy?url=${encodeURIComponent(info.thumburl || rawUrl)}`,
+              title: item.title ? item.title.replace(/^File:/i, '').replace(/\.[^/.]+$/, '') : 'Foto web',
+            });
+          }
+        }
+      }
+
+      return results;
+    } catch (err) {
+      console.warn('Error buscando imágenes en Wikimedia:', err);
+      return [];
     }
   }
 }
