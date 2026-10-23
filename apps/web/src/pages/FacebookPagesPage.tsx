@@ -1,10 +1,14 @@
 import React, { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import api from '../api/client';
-import { Share2, Plus, Power, PowerOff, ShieldCheck, Key, HelpCircle, ExternalLink, X } from 'lucide-react';
+import { Share2, Plus, Power, PowerOff, ShieldCheck, Key, HelpCircle, ExternalLink, X, Youtube, CheckCircle2 } from 'lucide-react';
 
 export const FacebookPagesPage: React.FC = () => {
+  const [searchParams] = useSearchParams();
   const [pages, setPages] = useState<any[]>([]);
+  const [youtubeChannels, setYoutubeChannels] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [youtubeNotice, setYoutubeNotice] = useState<string | null>(null);
 
   // Modal para vinculación directa de Token
   const [showModal, setShowModal] = useState(false);
@@ -14,18 +18,69 @@ export const FacebookPagesPage: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadPages();
-  }, []);
+  // Modal para credenciales de Google OAuth
+  const [showYtCredsModal, setShowYtCredsModal] = useState(false);
+  const [ytClientId, setYtClientId] = useState('');
+  const [ytClientSecret, setYtClientSecret] = useState('');
+  const [savingCreds, setSavingCreds] = useState(false);
 
-  const loadPages = async () => {
+  useEffect(() => {
+    loadAccounts();
+    if (searchParams.get('youtube') === 'success') {
+      const channelName = searchParams.get('channel') || 'tu canal';
+      setYoutubeNotice(`🎉 ¡Canal "${channelName}" vinculado exitosamente con YouTube Data API v3! Ya puedes subir Shorts 100% automáticos.`);
+    } else if (searchParams.get('youtube') === 'error') {
+      const msg = searchParams.get('msg') || 'Error conectando con Google';
+      alert('Error de Google: ' + msg);
+    }
+  }, [searchParams]);
+
+  const loadAccounts = async () => {
     try {
-      const res = await api.get('/pages');
-      setPages(res.data);
+      const [pagesRes, ytRes] = await Promise.allSettled([
+        api.get('/pages'),
+        api.get('/youtube/channels'),
+      ]);
+      if (pagesRes.status === 'fulfilled') setPages(pagesRes.value.data);
+      if (ytRes.status === 'fulfilled') setYoutubeChannels(ytRes.value.data);
     } catch (e) {
-      console.error('Error cargando páginas:', e);
+      console.error('Error cargando cuentas:', e);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSaveYtCredentials = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingCreds(true);
+    try {
+      await api.post('/youtube/settings', {
+        clientId: ytClientId.trim(),
+        clientSecret: ytClientSecret.trim(),
+      });
+      setShowYtCredsModal(false);
+      alert('¡Credenciales de Google OAuth guardadas! Procediendo a autorizar tu canal...');
+      handleConnectYouTube();
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'Error guardando credenciales');
+    } finally {
+      setSavingCreds(false);
+    }
+  };
+
+  const handleConnectYouTube = async () => {
+    try {
+      const res = await api.get('/youtube/auth/start');
+      if (res.data?.url) {
+        window.location.href = res.data.url;
+      }
+    } catch (e: any) {
+      const msg = e.response?.data?.message || '';
+      if (msg.includes('credenciales')) {
+        setShowYtCredsModal(true);
+      } else {
+        alert(msg || 'Error iniciando flujo OAuth con Google/YouTube');
+      }
     }
   };
 
@@ -75,28 +130,35 @@ export const FacebookPagesPage: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      {youtubeNotice && (
+        <div className="p-3 bg-emerald-500/20 border border-emerald-500/40 rounded-xl text-emerald-300 text-xs font-semibold flex items-center justify-between">
+          <span>{youtubeNotice}</span>
+          <button onClick={() => setYoutubeNotice(null)} className="text-emerald-400 hover:text-white font-bold ml-2">✕</button>
+        </div>
+      )}
+
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Páginas Oficiales de Facebook</h1>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Cuentas Oficiales de Redes</h1>
           <p className="text-sm text-slate-500">
-            Integración mediante Meta Graph API v19+ y Cifrado AES-256-GCM
+            Publicación 100% automatizada vía Meta Graph API v19+ y YouTube Data API v3
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
           <button
+            onClick={handleConnectYouTube}
+            className="flex items-center space-x-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2.5 rounded-lg text-xs font-semibold shadow-sm transition-colors"
+          >
+            <Youtube className="w-4 h-4" />
+            <span>Conectar Canal YouTube</span>
+          </button>
+          <button
             onClick={() => setShowModal(true)}
             className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg text-xs font-semibold shadow-sm transition-colors"
           >
             <Key className="w-4 h-4" />
-            <span>Vincular con Token de Página (Directo)</span>
-          </button>
-          <button
-            onClick={handleConnectMeta}
-            className="flex items-center space-x-2 bg-slate-800 hover:bg-slate-900 dark:bg-slate-700 text-white px-4 py-2.5 rounded-lg text-xs font-semibold shadow-sm transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Facebook OAuth</span>
+            <span>Vincular Fan Page Facebook</span>
           </button>
         </div>
       </div>
@@ -214,6 +276,79 @@ export const FacebookPagesPage: React.FC = () => {
         </div>
       )}
 
+      {/* Modal de Configuración de Credenciales de Google OAuth */}
+      {showYtCredsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center space-x-2">
+                <Youtube className="w-5 h-5 text-red-600" />
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                  Configurar Credenciales de Google Cloud
+                </h3>
+              </div>
+              <button
+                onClick={() => setShowYtCredsModal(false)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-500">
+              Ingresa el Client ID y Client Secret generados en tu consola de Google Cloud para autorizar la YouTube Data API v3.
+            </p>
+
+            <form onSubmit={handleSaveYtCredentials} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold uppercase text-slate-600 dark:text-slate-300 mb-1">
+                  ID de Cliente (Client ID) *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ej: 188432813260-...apps.googleusercontent.com"
+                  value={ytClientId}
+                  onChange={(e) => setYtClientId(e.target.value)}
+                  className="w-full px-3 py-2 text-xs font-mono border border-slate-300 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-red-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold uppercase text-slate-600 dark:text-slate-300 mb-1">
+                  Secreto de Cliente (Client Secret) *
+                </label>
+                <input
+                  type="password"
+                  required
+                  placeholder="Ej: GOCSPX-..."
+                  value={ytClientSecret}
+                  onChange={(e) => setYtClientSecret(e.target.value)}
+                  className="w-full px-3 py-2 text-xs font-mono border border-slate-300 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-red-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-end space-x-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowYtCredsModal(false)}
+                  className="px-4 py-2 text-xs text-slate-600 hover:text-slate-800 dark:text-slate-300"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingCreds}
+                  className="px-5 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-semibold disabled:opacity-50 transition"
+                >
+                  {savingCreds ? 'Guardando...' : 'Guardar y Autorizar Canal'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Alerta de Políticas de Meta */}
       <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 p-4 rounded-xl text-xs text-slate-600 dark:text-slate-300 space-y-1">
         <div className="flex items-center space-x-2 font-semibold text-slate-800 dark:text-slate-200">
@@ -287,6 +422,84 @@ export const FacebookPagesPage: React.FC = () => {
                       </>
                     )}
                   </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Sección Canales de YouTube */}
+      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2.5">
+            <div className="p-2 bg-red-600/10 text-red-600 rounded-xl">
+              <Youtube className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="text-base font-semibold text-slate-900 dark:text-white">
+                Canales Oficiales de YouTube ({youtubeChannels.length})
+              </h2>
+              <p className="text-xs text-slate-500">
+                Subida de Shorts 100% automática en segundo plano mediante YouTube Data API v3
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={handleConnectYouTube}
+            className="flex items-center space-x-1.5 px-3.5 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold shadow-sm transition"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Vincular Canal</span>
+          </button>
+        </div>
+
+        {youtubeChannels.length === 0 ? (
+          <div className="py-8 text-center text-sm text-slate-500 border border-dashed border-slate-200 dark:border-slate-800 rounded-lg space-y-3">
+            <Youtube className="w-8 h-8 text-red-500/60 mx-auto" />
+            <p className="font-semibold text-slate-700 dark:text-slate-300">
+              No hay canales de YouTube vinculados todavía.
+            </p>
+            <p className="text-xs text-slate-500 max-w-md mx-auto">
+              Haz clic en <strong>"Vincular Canal"</strong> para autorizar tu canal de YouTube y activar la publicación automática de Shorts.
+            </p>
+            <button
+              onClick={handleConnectYouTube}
+              className="inline-flex items-center space-x-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-xs font-semibold shadow-sm transition"
+            >
+              <Youtube className="w-4 h-4" />
+              <span>Conectar mi canal de YouTube</span>
+            </button>
+          </div>
+        ) : (
+          <div className="divide-y divide-slate-100 dark:divide-slate-800">
+            {youtubeChannels.map((ch) => (
+              <div key={ch.id} className="py-3 flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  {ch.channelThumbnail ? (
+                    <img src={ch.channelThumbnail} alt={ch.channelTitle} className="w-10 h-10 rounded-full object-cover border border-slate-700" />
+                  ) : (
+                    <div className="w-10 h-10 rounded-full bg-red-600/20 text-red-500 flex items-center justify-center font-bold text-xs">
+                      YT
+                    </div>
+                  )}
+                  <div>
+                    <h3 className="text-sm font-semibold text-slate-900 dark:text-white flex items-center space-x-2">
+                      <span>{ch.channelTitle}</span>
+                      <span className="text-[10px] font-mono text-slate-400">ID: {ch.channelId}</span>
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Estado: <strong className="text-emerald-500">CONECTADO</strong> • Subida automática Shorts: <strong className="text-emerald-500">HABILITADA</strong>
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <span className="px-2.5 py-1 bg-emerald-500/10 text-emerald-400 text-xs font-semibold rounded-lg flex items-center space-x-1 border border-emerald-500/20">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Listo para Publicar</span>
+                  </span>
                 </div>
               </div>
             ))}

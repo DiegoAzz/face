@@ -325,6 +325,11 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
   const [facebookPages, setFacebookPages] = useState<any[]>([]);
   const [selectedPageId, setSelectedPageId] = useState<string>('');
   const [isPublishingToFb, setIsPublishingToFb] = useState<boolean>(false);
+
+  const [youtubeChannels, setYoutubeChannels] = useState<any[]>([]);
+  const [selectedYtChannelId, setSelectedYtChannelId] = useState<string>('');
+  const [isPublishingToYt, setIsPublishingToYt] = useState<boolean>(false);
+
   const [publishNotice, setPublishNotice] = useState<string | null>(null);
 
   // Referencias multimedia
@@ -339,7 +344,7 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
   const speechSynthesisUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Cargar páginas de Facebook disponibles
+  // Cargar páginas de Facebook y canales de YouTube disponibles
   useEffect(() => {
     fetch('/api/pages')
       .then((res) => (res.ok ? res.json() : []))
@@ -347,6 +352,16 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
         if (Array.isArray(data) && data.length > 0) {
           setFacebookPages(data);
           setSelectedPageId(data[0].id);
+        }
+      })
+      .catch(() => {});
+
+    fetch('/api/youtube/channels')
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => {
+        if (Array.isArray(data) && data.length > 0) {
+          setYoutubeChannels(data);
+          setSelectedYtChannelId(data[0].id);
         }
       })
       .catch(() => {});
@@ -1293,6 +1308,51 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
     }
   };
 
+  // 2b. Publicar directamente a YouTube Shorts (100% Automático vía YouTube Data API v3)
+  const handlePublishToYouTubeDirect = async () => {
+    if (!selectedYtChannelId && youtubeChannels.length === 0) {
+      alert('Debes tener al menos un canal de YouTube vinculado en la sección Canales/Páginas.');
+      return;
+    }
+
+    setIsPublishingToYt(true);
+    setPublishNotice('⏳ Procesando y subiendo Short 100% automático a YouTube...');
+
+    try {
+      let blobToUpload = exportedBlob;
+      if (!blobToUpload) {
+        blobToUpload = await renderVideoInMemory();
+        setExportedBlob(blobToUpload);
+      }
+
+      const reader = new FileReader();
+      reader.readAsDataURL(blobToUpload);
+      reader.onloadend = async () => {
+        const base64data = (reader.result as string).split(',')[1];
+        const res = await fetch('/api/youtube/publish-short', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            channelDbId: selectedYtChannelId || youtubeChannels[0]?.id,
+            title: cleanPureTitle.slice(0, 95),
+            description: `${cleanPureTitle}\n\n${cleanPureBody}\n\n#Shorts #Noticias #Tendencias`,
+            videoBase64: base64data,
+          }),
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          setPublishNotice(`🎉 ¡Short publicado 100% automático en YouTube ("${data.channelTitle}")! Enlace: ${data.url}`);
+        } else {
+          alert('Error de YouTube: ' + (data.message || 'Error publicando Short'));
+        }
+        setIsPublishingToYt(false);
+      };
+    } catch (err: any) {
+      alert('Error: ' + err.message);
+      setIsPublishingToYt(false);
+    }
+  };
+
   // 3. Abrir Creador de Reels de Facebook (Para Perfil Personal)
   const handleOpenFacebookReelsPersonal = async () => {
     let blob = exportedBlob;
@@ -2117,6 +2177,73 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
                     YouTube Shorts & Facebook Reels
                   </span>
                 </div>
+
+                {/* Subida Directa a Canal de YouTube Conectado (100% Automático) */}
+                {youtubeChannels.length > 0 && (
+                  <div className="p-2.5 rounded-xl bg-red-950/40 border border-red-500/40 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-red-400 flex items-center space-x-1.5">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-red-400" />
+                        <span>100% Automático: Publicar a tu Canal de YouTube Shorts</span>
+                      </span>
+                      <span className="text-[9px] px-1.5 py-0.5 bg-red-600/30 text-red-300 rounded font-semibold">
+                        Vía YouTube Data API v3
+                      </span>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row gap-2 items-center justify-between">
+                      <div className="text-[11px] text-slate-300 flex-1 w-full">
+                        <select
+                          value={selectedYtChannelId}
+                          onChange={(e) => setSelectedYtChannelId(e.target.value)}
+                          className="w-full bg-slate-900 border border-red-700/60 rounded-lg px-2 py-1 text-xs text-white"
+                        >
+                          {youtubeChannels.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.channelTitle} (ID: {c.channelId})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <button
+                        onClick={handlePublishToYouTubeDirect}
+                        disabled={isPublishingToYt}
+                        className="w-full sm:w-auto px-4 py-2 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition flex items-center justify-center space-x-1.5 shadow-md flex-shrink-0"
+                      >
+                        {isPublishingToYt ? (
+                          <>
+                            <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            <span>Subiendo automáticamente a YouTube...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Send className="w-3.5 h-3.5" />
+                            <span>Publicar Short Automático</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {youtubeChannels.length === 0 && (
+                  <div className="pt-1 border-t border-slate-700/60 p-2.5 rounded-xl bg-slate-900/80 border border-slate-800 text-[11px] text-slate-300 flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <span className="font-bold text-red-400 block">¿Quieres publicación 100% automática a YouTube Shorts?</span>
+                      <span className="text-[10px] text-slate-400">
+                        Vincula tu canal en "Cuentas / Páginas" con Google OAuth para subir Shorts en segundo plano sin pasar por YouTube Studio.
+                      </span>
+                    </div>
+                    <a
+                      href="/pages"
+                      target="_blank"
+                      className="ml-2 px-2.5 py-1 bg-red-600 hover:bg-red-500 text-white rounded-lg text-xs font-semibold whitespace-nowrap shadow"
+                    >
+                      Conectar Canal
+                    </a>
+                  </div>
+                )}
 
                 {/* Subida Directa a Fan Page Conectada (100% Automático) */}
                 {facebookPages.length > 0 && (

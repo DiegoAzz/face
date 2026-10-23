@@ -4,6 +4,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { PrismaModule } from './modules/prisma/prisma.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { MetaModule } from './modules/meta/meta.module';
+import { YouTubeModule } from './modules/youtube/youtube.module';
 import { SourcesModule } from './modules/sources/sources.module';
 import { NewsModule } from './modules/news/news.module';
 import { DraftsModule } from './modules/drafts/drafts.module';
@@ -24,6 +25,7 @@ import { HealthModule } from './modules/health/health.module';
     PrismaModule,
     AuthModule,
     MetaModule,
+    YouTubeModule,
     SourcesModule,
     NewsModule,
     DraftsModule,
