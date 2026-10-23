@@ -22,6 +22,11 @@ export class NewsController {
     return this.newsService.listNewsItems(user.organizationId);
   }
 
+  @Get('news/alerts')
+  async getAlerts(@CurrentUser() user: AuthenticatedUser) {
+    return this.newsService.listLatestAlerts(user.organizationId);
+  }
+
   @Post('news/sync')
   @Roles(UserRole.SUPERADMIN, UserRole.ORG_ADMIN, UserRole.EDITOR)
   async syncNews(@CurrentUser() user: AuthenticatedUser) {

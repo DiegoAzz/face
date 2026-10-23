@@ -560,4 +560,20 @@ export class NewsService implements OnModuleInit {
 
     return draft;
   }
+
+  /**
+   * Obtiene las alertas de noticias más recientes para notificaciones en segundo plano
+   */
+  async listLatestAlerts(organizationId: string, limit: number = 15) {
+    return this.prisma.newsItem.findMany({
+      where: { organizationId },
+      include: {
+        source: {
+          select: { name: true, category: true },
+        },
+      },
+      orderBy: { fetchedAt: 'desc' },
+      take: limit,
+    });
+  }
 }
