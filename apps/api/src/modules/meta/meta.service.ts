@@ -215,7 +215,7 @@ export class MetaService {
         status: 'ACTIVE',
       },
       create: {
-        organizationId,
+        organization: { connect: { id: organizationId } },
         pageId: pageId.trim(),
         pageName: resolvedName || 'Mi Página de Facebook',
         tokenRef,

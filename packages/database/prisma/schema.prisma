@@ -88,7 +88,7 @@ model MetaConnection {
 model FacebookPage {
   id                String          @id @default(uuid())
   organizationId    String          @map("organization_id")
-  metaConnectionId  String          @map("meta_connection_id")
+  metaConnectionId  String?         @map("meta_connection_id")
   pageId            String          @map("page_id")
   pageName          String          @map("page_name")
   tokenRef          String          @map("token_ref")
@@ -98,7 +98,7 @@ model FacebookPage {
   updatedAt         DateTime        @updatedAt @map("updated_at")
 
   organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  metaConnection MetaConnection  @relation(fields: [metaConnectionId], references: [id], onDelete: Cascade)
+  metaConnection MetaConnection? @relation(fields: [metaConnectionId], references: [id], onDelete: SetNull)
   schedules      Schedule[]
   publicationJobs PublicationJob[]
 
