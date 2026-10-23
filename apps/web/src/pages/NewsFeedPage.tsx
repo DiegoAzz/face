@@ -18,7 +18,12 @@ export const NewsFeedPage: React.FC = () => {
   const loadStories = async () => {
     try {
       const res = await api.get('/stories');
-      setStories(res.data);
+      const sorted = (res.data || []).sort((a: any, b: any) => {
+        const dateA = new Date(a.storyClusterItems?.[0]?.item?.publishedAt || a.createdAt).getTime();
+        const dateB = new Date(b.storyClusterItems?.[0]?.item?.publishedAt || b.createdAt).getTime();
+        return dateB - dateA;
+      });
+      setStories(sorted);
     } catch (e) {
       console.error('Error cargando historias:', e);
     } finally {
@@ -286,6 +291,10 @@ export const NewsFeedPage: React.FC = () => {
       (primaryItem?.source?.name && primaryItem.source.name.toLowerCase().includes(searchLower));
 
     return matchesCategory && matchesSearch;
+  }).sort((a, b) => {
+    const dateA = new Date(a.storyClusterItems?.[0]?.item?.publishedAt || a.createdAt).getTime();
+    const dateB = new Date(b.storyClusterItems?.[0]?.item?.publishedAt || b.createdAt).getTime();
+    return dateB - dateA;
   });
 
   const getCategoryColor = (cat: string) => {

@@ -475,7 +475,7 @@ export class NewsService implements OnModuleInit {
   }
 
   async listStories(organizationId: string) {
-    return this.prisma.storyCluster.findMany({
+    const clusters = await this.prisma.storyCluster.findMany({
       where: { organizationId },
       include: {
         storyClusterItems: {
@@ -487,8 +487,14 @@ export class NewsService implements OnModuleInit {
         },
         drafts: true,
       },
-      orderBy: { relevanceScore: 'desc' },
-      take: 50,
+      take: 100,
+    });
+
+    // Ordenar de manera estricta: las más recientes en fecha y hora primero
+    return clusters.sort((a, b) => {
+      const dateA = new Date(a.storyClusterItems?.[0]?.item?.publishedAt || a.createdAt).getTime();
+      const dateB = new Date(b.storyClusterItems?.[0]?.item?.publishedAt || b.createdAt).getTime();
+      return dateB - dateA;
     });
   }
 
