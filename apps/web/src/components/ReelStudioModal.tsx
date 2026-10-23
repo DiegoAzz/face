@@ -20,6 +20,9 @@ import {
   Loader2,
   Plus,
   Trash2,
+  Share2,
+  ExternalLink,
+  Send,
 } from 'lucide-react';
 
 interface ReelStudioModalProps {
@@ -260,6 +263,26 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
   const [searchQuery, setSearchQuery] = useState(initialSearchWord);
   const [searchResults, setSearchResults] = useState<{ url: string; thumbUrl: string; title: string }[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+
+  // Estados de exportación y publicación directa a redes
+  const [exportedBlob, setExportedBlob] = useState<Blob | null>(null);
+  const [facebookPages, setFacebookPages] = useState<any[]>([]);
+  const [selectedPageId, setSelectedPageId] = useState<string>('');
+  const [isPublishingToFb, setIsPublishingToFb] = useState<boolean>(false);
+  const [publishNotice, setPublishNotice] = useState<string | null>(null);
+
+  // Cargar páginas de Facebook disponibles
+  useEffect(() => {
+    fetch('/api/pages')
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => {
+        if (Array.isArray(data) && data.length > 0) {
+          setFacebookPages(data);
+          setSelectedPageId(data[0].id);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const animationFrameRef = useRef<number | null>(null);
   const startTimeRef = useRef<number>(0);
@@ -740,6 +763,7 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
         const blob = new Blob(recordedChunksRef.current, { type: mimeType });
         const url = URL.createObjectURL(blob);
         setIsRecording(false);
+        setExportedBlob(blob);
 
         const a = document.createElement('a');
         a.href = url;
@@ -747,6 +771,7 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
         const cleanName = cleanPureTitle.slice(0, 25).replace(/[^a-zA-Z0-9]/g, '_');
         a.download = `${prefix}_${cleanName}.mp4`;
         a.click();
+        setPublishNotice('✓ ¡Video renderizado y descargado! Ya puedes publicarlo directo en YouTube Shorts o Facebook.');
       };
 
       recorder.start();
@@ -776,6 +801,92 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
       alert('Error exportando video: ' + err.message);
       setIsRecording(false);
     }
+  };
+
+  // 1. Subir a YouTube Shorts (1-Clic)
+  const handlePublishYouTubeShorts = async () => {
+    const ytTitle = `${cleanPureTitle.slice(0, 80)} #Shorts #Noticias #Tendencias`;
+    const ytDesc = `${cleanPureTitle}\n\n${cleanPureBody}\n\n🚨 Noticias de última hora. Síguenos para más información.\n\n#Shorts #Noticias #Colombia #Viral`;
+    try {
+      await navigator.clipboard.writeText(`${ytTitle}\n\n${ytDesc}`);
+      setPublishNotice('✓ ¡Título y etiquetas de YouTube Shorts copiados! Abriendo panel de subida de YouTube...');
+    } catch {}
+
+    window.open('https://www.youtube.com/upload', '_blank');
+  };
+
+  // 2. Publicar directamente a Página de Facebook conectada (Vía Meta Graph API)
+  const handlePublishToFacebookPage = async () => {
+    if (!selectedPageId) {
+      alert('Debes tener al menos una página de Facebook conectada en la sección Páginas.');
+      return;
+    }
+    if (!exportedBlob) {
+      alert('Primero haz clic en "Generar / Descargar Video" para preparar el Reel con audio.');
+      return;
+    }
+
+    setIsPublishingToFb(true);
+    setPublishNotice(null);
+    try {
+      const reader = new FileReader();
+      reader.readAsDataURL(exportedBlob);
+      reader.onloadend = async () => {
+        const base64data = (reader.result as string).split(',')[1];
+        const res = await fetch(`/api/pages/${selectedPageId}/publish-video`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: cleanPureTitle.slice(0, 100),
+            description: `${cleanPureTitle}\n\n${cleanPureBody}\n\n#Noticias #Reels #EnVivo #Colombia`,
+            videoBase64: base64data,
+          }),
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          setPublishNotice(`🎉 ¡Reel publicado exitosamente en "${data.pageName}" en Facebook sin necesidad de descargar!`);
+        } else {
+          alert('Error de Facebook: ' + (data.message || 'Error publicando'));
+        }
+        setIsPublishingToFb(false);
+      };
+    } catch (err: any) {
+      alert('Error: ' + err.message);
+      setIsPublishingToFb(false);
+    }
+  };
+
+  // 3. Abrir Creador de Reels de Facebook (Para Perfil Personal)
+  const handleOpenFacebookReelsPersonal = async () => {
+    try {
+      await navigator.clipboard.writeText(`${cleanPureTitle}\n\n${cleanPureBody}\n\n#Noticias #Reels`);
+      setPublishNotice('✓ ¡Texto copiado en el portapapeles! Abriendo el Creador de Reels de Facebook...');
+    } catch {}
+    window.open('https://www.facebook.com/reels/create', '_blank');
+  };
+
+  // 4. Compartir nativo en apps del dispositivo
+  const handleShareNative = async () => {
+    if (!exportedBlob) {
+      alert('Primero genera el video con el botón principal.');
+      return;
+    }
+    if (typeof navigator !== 'undefined' && (navigator as any).canShare) {
+      const file = new File([exportedBlob], `${durationMode === 'youtube_15' ? 'Short' : 'Reel'}.mp4`, { type: 'video/mp4' });
+      if ((navigator as any).canShare({ files: [file] })) {
+        try {
+          await navigator.share({
+            files: [file],
+            title: cleanPureTitle,
+            text: `${cleanPureTitle}\n\n${cleanPureBody.slice(0, 140)} #Noticias #Reels`,
+          });
+          return;
+        } catch (e) {
+          console.warn(e);
+        }
+      }
+    }
+    alert('Tu navegador no soporta compartir archivos directamente. Usa los botones directos de YouTube o Facebook.');
   };
 
   return (
@@ -1183,6 +1294,20 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
 
             {/* 7. Botón de Exportación Directa */}
             <div className="pt-1">
+              {/* Notificación de publicación exitosa */}
+              {publishNotice && (
+                <div className="p-2.5 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs flex items-center justify-between animate-fade-in">
+                  <span className="font-semibold">{publishNotice}</span>
+                  <button
+                    onClick={() => setPublishNotice(null)}
+                    className="text-emerald-400 hover:text-white text-xs font-bold ml-2"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
+
+              {/* Botón Principal: Generar y Descargar */}
               <button
                 onClick={handleExportVideo}
                 disabled={isRecording}
@@ -1192,7 +1317,7 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
                   <>
                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                     <span>
-                      Exportando {durationMode === 'youtube_15' ? 'Short (15s)' : 'Reel'} con Audio...{' '}
+                      Renderizando {durationMode === 'youtube_15' ? 'Short (15s)' : 'Reel'} con Audio...{' '}
                       {recordProgress}%
                     </span>
                   </>
@@ -1200,19 +1325,124 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
                   <>
                     <Download className="w-5 h-5" />
                     <span>
-                      Descargar {durationMode === 'youtube_15' ? 'YouTube Short (15s)' : 'Reel de Facebook (MP4)'}
+                      {exportedBlob
+                        ? '1. Descargar Copia en MP4'
+                        : `Generar y Descargar ${durationMode === 'youtube_15' ? 'YouTube Short (15s)' : 'Reel de Facebook (MP4)'}`}
                     </span>
                   </>
                 )}
               </button>
 
+              {/* Panel de Publicación Rápida a Redes (YouTube Shorts & Facebook) */}
+              <div className="p-3 rounded-2xl bg-slate-800/80 border border-slate-700 space-y-2 mt-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-200 flex items-center space-x-1.5">
+                    <Send className="w-4 h-4 text-sky-400" />
+                    <span>Montar Directamente en Redes Sociales</span>
+                  </span>
+                  <span className="text-[10px] text-emerald-400 font-semibold">
+                    1-Clic • Sin complicaciones
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                  {/* Botón 1: YouTube Shorts */}
+                  <button
+                    onClick={handlePublishYouTubeShorts}
+                    className="p-2.5 rounded-xl bg-red-600/20 hover:bg-red-600/30 border border-red-500/50 text-white text-left transition flex items-center justify-between group"
+                  >
+                    <div className="flex items-center space-x-2">
+                      <div className="p-1.5 rounded-lg bg-red-600 text-white">
+                        <Youtube className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div className="font-bold flex items-center space-x-1">
+                          <span>Subir a YouTube Shorts</span>
+                          <ExternalLink className="w-3 h-3 text-red-400 opacity-70 group-hover:opacity-100" />
+                        </div>
+                        <div className="text-[10px] text-slate-400">Copia título + abre YouTube Studio</div>
+                      </div>
+                    </div>
+                  </button>
+
+                  {/* Botón 2: Facebook Reels (Perfil Personal) */}
+                  <button
+                    onClick={handleOpenFacebookReelsPersonal}
+                    className="p-2.5 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/50 text-white text-left transition flex items-center justify-between group"
+                  >
+                    <div className="flex items-center space-x-2">
+                      <div className="p-1.5 rounded-lg bg-blue-600 text-white">
+                        <Film className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div className="font-bold flex items-center space-x-1">
+                          <span>FB Reels (Perfil Personal)</span>
+                          <ExternalLink className="w-3 h-3 text-blue-400 opacity-70 group-hover:opacity-100" />
+                        </div>
+                        <div className="text-[10px] text-slate-400">Copia texto + abre Creador de Reels</div>
+                      </div>
+                    </div>
+                  </button>
+                </div>
+
+                {/* Subida Directa a Fan Page Conectada */}
+                {facebookPages.length > 0 ? (
+                  <div className="pt-1.5 border-t border-slate-700/60 flex flex-col sm:flex-row gap-2 items-center justify-between">
+                    <div className="text-[11px] text-slate-300 flex-1 w-full">
+                      <span className="font-semibold block mb-0.5">O publicar directo a tu Fan Page:</span>
+                      <select
+                        value={selectedPageId}
+                        onChange={(e) => setSelectedPageId(e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white"
+                      >
+                        {facebookPages.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.pageName} (ID: {p.pageId})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <button
+                      onClick={handlePublishToFacebookPage}
+                      disabled={isPublishingToFb || !exportedBlob}
+                      className="w-full sm:w-auto px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition flex items-center justify-center space-x-1.5 shadow-md flex-shrink-0"
+                    >
+                      {isPublishingToFb ? (
+                        <>
+                          <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          <span>Subiendo a Facebook...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Send className="w-3.5 h-3.5" />
+                          <span>Publicar Reel sin Descargar</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                ) : null}
+
+                {/* Botón 3: Compartir nativo */}
+                <div className="pt-1 flex items-center justify-between text-[11px] text-slate-400">
+                  <span>¿Prefieres la app del celular?</span>
+                  <button
+                    onClick={handleShareNative}
+                    className="text-sky-400 hover:text-sky-300 font-semibold flex items-center space-x-1"
+                  >
+                    <Share2 className="w-3.5 h-3.5" />
+                    <span>Compartir a TikTok / Instagram / WhatsApp</span>
+                  </button>
+                </div>
+              </div>
+
               <div className="mt-2 text-center space-y-0.5">
                 <p className="text-[11px] text-emerald-400 font-semibold flex items-center justify-center space-x-1">
                   <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>Cortes reales + Voz limpia sin emojis + Subtítulos ajustados</span>
+                  <span>3 Escenas reales + Audio incrustado + Subtítulos CapCut</span>
                 </p>
                 <p className="text-[10px] text-slate-400">
-                  Listo para publicar directamente en YouTube Shorts, Facebook Reels e Instagram.
+                  Monetización activa para Perfiles Profesionales y Fan Pages.
                 </p>
               </div>
             </div>

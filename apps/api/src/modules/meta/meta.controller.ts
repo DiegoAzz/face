@@ -80,4 +80,14 @@ export class PagesController {
   ) {
     return this.metaService.setPublishingStatus(pageId, user.organizationId, false);
   }
+
+  @Post(':id/publish-video')
+  @Roles(UserRole.SUPERADMIN, UserRole.ORG_ADMIN, UserRole.EDITOR)
+  async publishVideo(
+    @Param('id') pageId: string,
+    @Body() body: { title: string; description: string; videoBase64: string },
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.metaService.publishVideoToPage(pageId, user.organizationId, body);
+  }
 }

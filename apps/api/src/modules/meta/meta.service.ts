@@ -251,4 +251,61 @@ export class MetaService {
 
     return decryptSecret(page.tokenRef);
   }
+
+  async publishVideoToPage(
+    pageDbId: string,
+    organizationId: string,
+    data: { title: string; description: string; videoBase64: string }
+  ) {
+    const page = await this.prisma.facebookPage.findFirst({
+      where: { id: pageDbId, organizationId },
+    });
+
+    if (!page) {
+      throw new NotFoundException('Página de Facebook no encontrada');
+    }
+
+    const token = decryptSecret(page.tokenRef);
+    const videoBuffer = Buffer.from(data.videoBase64, 'base64');
+
+    // Usar FormData nativo de Node 20
+    const formData = new globalThis.FormData();
+    formData.append('access_token', token);
+    formData.append('title', data.title || 'Noticia al Instante');
+    formData.append('description', data.description || '');
+    const blob = new globalThis.Blob([videoBuffer], { type: 'video/mp4' });
+    formData.append('source', blob, 'reel.mp4');
+
+    try {
+      const res = await axios.post(
+        `https://graph.facebook.com/v19.0/${page.pageId}/videos`,
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+          timeout: 90000,
+        }
+      );
+
+      await this.prisma.auditLog.create({
+        data: {
+          organizationId,
+          action: 'PUBLISH_VIDEO_REEL',
+          targetType: 'FACEBOOK_PAGE',
+          targetId: page.id,
+          metadataRedacted: JSON.stringify({ pageName: page.pageName, videoId: res.data?.id }),
+        },
+      });
+
+      return {
+        success: true,
+        remoteVideoId: res.data?.id,
+        pageName: page.pageName,
+      };
+    } catch (err: any) {
+      const metaMsg = err.response?.data?.error?.message || err.message;
+      throw new BadRequestException(`Meta rechazó la subida del video: ${metaMsg}`);
+    }
+  }
 }

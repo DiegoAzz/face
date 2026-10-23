@@ -21,8 +21,10 @@ async function bootstrap() {
   const logger = new Logger('NewsFlow-API');
   const app = await NestFactory.create(AppModule);
 
-  // 1. Cookies HttpOnly seguras
+  // 1. Cookies HttpOnly seguras y soporte de videos en payload
   app.use(cookieParser());
+  app.use(express.json({ limit: '60mb' }));
+  app.use(express.urlencoded({ limit: '60mb', extended: true }));
 
   // 2. Filtro global de excepciones con sanitización de secretos
   app.useGlobalFilters(new HttpExceptionFilter());
