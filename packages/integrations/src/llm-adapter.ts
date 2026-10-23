@@ -58,7 +58,7 @@ Genera el borrador en formato JSON con la siguiente estructura:
   "source_url": "${input.sourceUrl}",
   "verification_notes": "Notas sobre la contrastación y origen de la información",
   "uncertainties": "Puntos pendientes de corroboración o hechos en desarrollo",
-  "hashtags": ["#NoticiasColombia", "#Actualidad"],
+  "hashtags": ["#NoticiasColombia", "#Tendencia"],
   "risk_flags": ["HEALTH" | "EMERGENCY" | "CRIME" | "REPUTATION" | "MARKETS" | "ELECTIONS_POLITICS" | "VIOLENCE" | "MINORS" | "DISASTERS" | "UNCONFIRMED"]
 }`;
 
@@ -91,6 +91,45 @@ Genera el borrador en formato JSON con la siguiente estructura:
   }
 }
 
+function decodeEntities(str: string): string {
+  if (!str) return '';
+  return str
+    .replace(/&#(\d+);/g, (_, dec) => {
+      try {
+        return String.fromCharCode(parseInt(dec, 10));
+      } catch {
+        return _;
+      }
+    })
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => {
+      try {
+        return String.fromCharCode(parseInt(hex, 16));
+      } catch {
+        return _;
+      }
+    })
+    .replace(/&quot;/gi, '"')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&ldquo;|&rdquo;|&#8220;|&#8221;/gi, '"')
+    .replace(/&lsquo;|&rsquo;|&#8216;|&#8217;/gi, "'")
+    .replace(/&ndash;|&mdash;|&#8211;|&#8212;/gi, '-')
+    .replace(/&aacute;/gi, 'á')
+    .replace(/&eacute;/gi, 'é')
+    .replace(/&iacute;/gi, 'í')
+    .replace(/&oacute;/gi, 'ó')
+    .replace(/&uacute;/gi, 'ú')
+    .replace(/&ntilde;/gi, 'ñ')
+    .replace(/&Aacute;/gi, 'Á')
+    .replace(/&Eacute;/gi, 'É')
+    .replace(/&Iacute;/gi, 'Í')
+    .replace(/&Oacute;/gi, 'Ó')
+    .replace(/&Uacute;/gi, 'Ú')
+    .replace(/&Ntilde;/gi, 'Ñ');
+}
+
 /**
  * Adaptador Determinista Mock para pruebas unitarias y de integración sin consumo de API.
  */
@@ -112,14 +151,34 @@ export class MockEditorialLLMAdapter implements LLMAdapter {
       riskFlags.push(RiskFlag.CRIME);
     }
 
+    const cleanTitle = decodeEntities(input.title)
+      .replace(/^Actualidad:\s*/i, '')
+      .replace(/<[^>]*>?/gm, '')
+      .trim();
+
+    let cleanExcerpt = decodeEntities(input.excerpt)
+      .replace(/<[^>]*>?/gm, '')
+      .replace(/\s+/g, ' ')
+      .replace(/\.\.+/g, '.')
+      .trim();
+
+    const hashtags = ['#NoticiasColombia', '#Tendencia'];
+    const cat = (input.category || '').toLowerCase();
+    if (cat.includes('deport')) hashtags.unshift('#Deportes');
+    else if (cat.includes('tecno')) hashtags.unshift('#Tecnologia');
+    else if (cat.includes('entreten') || cat.includes('faran')) hashtags.unshift('#Farándula');
+    else if (cat.includes('salud')) hashtags.unshift('#Salud');
+    else if (cat.includes('econo')) hashtags.unshift('#Economia');
+    else hashtags.unshift('#UltimaHora');
+
     return {
-      headline: `Actualidad: ${input.title.slice(0, 100)}`,
-      summary: `De acuerdo con la información reportada por ${input.sourceName}, ${input.excerpt.slice(0, 300)}. Los detalles continúan bajo seguimiento editorial.`,
+      headline: cleanTitle,
+      summary: cleanExcerpt || cleanTitle,
       source_attribution: input.sourceName,
       source_url: input.sourceUrl,
-      verification_notes: `Información obtenida a través de la sindicación oficial de ${input.sourceName}. Atribución obligatoria incluida.`,
-      uncertainties: 'Detalles adicionales en desarrollo conforme a declaraciones oficiales.',
-      hashtags: ['#Noticias', '#ActualidadColombia'],
+      verification_notes: `Información contrastada con la sindicación oficial de ${input.sourceName}. Atribución obligatoria incluida.`,
+      uncertainties: 'Detalles sujetos a actualización según declaraciones oficiales.',
+      hashtags,
       risk_flags: riskFlags,
     };
   }

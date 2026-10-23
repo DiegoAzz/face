@@ -16,6 +16,56 @@ import {
   CheckCheck,
 } from 'lucide-react';
 
+const decodeHtml = (str: string): string => {
+  if (!str) return '';
+  return str
+    .replace(/&#(\d+);/g, (_, dec) => {
+      try {
+        return String.fromCharCode(parseInt(dec, 10));
+      } catch {
+        return _;
+      }
+    })
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => {
+      try {
+        return String.fromCharCode(parseInt(hex, 16));
+      } catch {
+        return _;
+      }
+    })
+    .replace(/&quot;/gi, '"')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&ldquo;|&rdquo;|&#8220;|&#8221;/gi, '"')
+    .replace(/&lsquo;|&rsquo;|&#8216;|&#8217;/gi, "'")
+    .replace(/&ndash;|&mdash;|&#8211;|&#8212;/gi, '-')
+    .replace(/&aacute;/gi, 'á')
+    .replace(/&eacute;/gi, 'é')
+    .replace(/&iacute;/gi, 'í')
+    .replace(/&oacute;/gi, 'ó')
+    .replace(/&uacute;/gi, 'ú')
+    .replace(/&ntilde;/gi, 'ñ')
+    .replace(/&Aacute;/gi, 'Á')
+    .replace(/&Eacute;/gi, 'É')
+    .replace(/&Iacute;/gi, 'Í')
+    .replace(/&Oacute;/gi, 'Ó')
+    .replace(/&Uacute;/gi, 'Ú')
+    .replace(/&Ntilde;/gi, 'Ñ')
+    .replace(/<[^>]*>?/gm, '')
+    .trim();
+};
+
+const cleanBodyText = (body: string): string => {
+  if (!body) return '';
+  return decodeHtml(body)
+    .replace(/^De acuerdo con la información reportada por [^,]+,\s*/i, '')
+    .replace(/\.\.\s*Los detalles continúan bajo seguimiento editorial\./i, '.')
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+
 const parseFlags = (flags: any): string[] => {
   if (Array.isArray(flags)) return flags;
   if (typeof flags === 'string') {
@@ -40,6 +90,8 @@ export const EditorialRoomPage: React.FC = () => {
   const [scheduledAt, setScheduledAt] = useState('');
   const [saving, setSaving] = useState(false);
   const [copiedText, setCopiedText] = useState(false);
+  const [markingPublished, setMarkingPublished] = useState(false);
+  const [publishedSuccessMessage, setPublishedSuccessMessage] = useState<string | null>(null);
 
   useEffect(() => {
     loadData();
@@ -51,10 +103,15 @@ export const EditorialRoomPage: React.FC = () => {
         api.get('/drafts'),
         api.get('/pages'),
       ]);
-      setDrafts(draftsRes.data);
+      const cleanedDrafts = (draftsRes.data || []).map((d: any) => ({
+        ...d,
+        title: decodeHtml(d.title || '').replace(/^Actualidad:\s*/i, '').trim(),
+        body: cleanBodyText(d.body || ''),
+      }));
+      setDrafts(cleanedDrafts);
       setPages(pagesRes.data);
-      if (draftsRes.data.length > 0 && !selectedDraft) {
-        selectDraft(draftsRes.data[0]);
+      if (cleanedDrafts.length > 0 && !selectedDraft) {
+        selectDraft(cleanedDrafts[0]);
       }
     } catch (e) {
       console.error('Error cargando sala editorial:', e);
@@ -65,8 +122,9 @@ export const EditorialRoomPage: React.FC = () => {
 
   const selectDraft = (draft: any) => {
     setSelectedDraft(draft);
-    setEditTitle(draft.title);
-    setEditBody(draft.body);
+    setEditTitle(decodeHtml(draft.title || '').replace(/^Actualidad:\s*/i, '').trim());
+    setEditBody(cleanBodyText(draft.body || ''));
+    setPublishedSuccessMessage(null);
   };
 
   const handleSaveEdit = async () => {
@@ -131,7 +189,8 @@ export const EditorialRoomPage: React.FC = () => {
 
   const handleCopyFullText = async () => {
     if (!selectedDraft) return;
-    const textToCopy = `${editTitle}\n\n${editBody}\n\n📌 Fuente oficial: ${selectedDraft.sourceAttribution}\n🔗 Más detalles: ${selectedDraft.sourceUrl}\n\n#NoticiasColombia #Actualidad #Tendencia #UltimaHora`;
+    const cleanTitle = (editTitle || selectedDraft.title || '').replace(/^Actualidad:\s*/i, '').trim();
+    const textToCopy = `${cleanTitle}\n\n${editBody}\n\n📌 Fuente oficial: ${selectedDraft.sourceAttribution}\n🔗 Más detalles: ${selectedDraft.sourceUrl}\n\n#NoticiasColombia #Tendencia #UltimaHora`;
     try {
       await navigator.clipboard.writeText(textToCopy);
       setCopiedText(true);
@@ -155,17 +214,28 @@ export const EditorialRoomPage: React.FC = () => {
 
   const handleMarkPublished = async () => {
     if (!selectedDraft) return;
+    setMarkingPublished(true);
+    setPublishedSuccessMessage(null);
     try {
-      await api.patch(`/drafts/${selectedDraft.id}`, {
-        title: editTitle,
+      const cleanTitle = (editTitle || selectedDraft.title || '').replace(/^Actualidad:\s*/i, '').trim();
+      const res = await api.post(`/drafts/${selectedDraft.id}/publish-manual`, {
+        title: cleanTitle,
         body: editBody,
-        reason: 'Publicado manualmente en Perfil Profesional Monetizado',
       });
-      await api.post(`/drafts/${selectedDraft.id}/approve`);
-      await loadData();
-      alert('¡Excelente! Noticia registrada como publicada en tu perfil monetizado.');
+      const updatedDraft = {
+        ...res.data,
+        title: (res.data.title || cleanTitle).replace(/^Actualidad:\s*/i, ''),
+      };
+      setSelectedDraft(updatedDraft);
+      setDrafts((prev) =>
+        prev.map((d) => (d.id === updatedDraft.id ? { ...d, ...updatedDraft } : d))
+      );
+      setPublishedSuccessMessage('¡Excelente! Noticia registrada como publicada en tu perfil monetizado.');
     } catch (e: any) {
-      alert(e.response?.data?.message || 'Error actualizando estado');
+      console.error('Error al registrar publicación manual:', e);
+      alert(e.response?.data?.message || 'Error al marcar como publicado');
+    } finally {
+      setMarkingPublished(false);
     }
   };
 
@@ -197,7 +267,17 @@ export const EditorialRoomPage: React.FC = () => {
                 }`}
               >
                 <div className="flex items-center justify-between mb-1">
-                  <span className="font-semibold">{d.status}</span>
+                  <span
+                    className={`font-semibold px-2 py-0.5 rounded text-[10px] ${
+                      d.status === 'PUBLISHED'
+                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 font-bold'
+                        : d.status === 'APPROVED'
+                        ? 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300'
+                        : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                    }`}
+                  >
+                    {d.status === 'PUBLISHED' ? '✓ PUBLICADO' : d.status}
+                  </span>
                   <span className="text-[10px] text-slate-400">v{d.version}</span>
                 </div>
                 <div className="flex gap-2.5 items-start">
@@ -371,29 +451,64 @@ export const EditorialRoomPage: React.FC = () => {
 
                   <button
                     onClick={handleMarkPublished}
-                    className="flex items-center justify-center space-x-2 bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2.5 rounded-xl text-xs font-semibold shadow transition"
+                    disabled={markingPublished || selectedDraft.status === 'PUBLISHED'}
+                    className={`flex items-center justify-center space-x-2 px-3.5 py-2.5 rounded-xl text-xs font-semibold shadow transition ${
+                      selectedDraft.status === 'PUBLISHED'
+                        ? 'bg-emerald-700 text-white cursor-default opacity-95'
+                        : 'bg-emerald-600 hover:bg-emerald-700 text-white active:scale-95'
+                    }`}
                   >
-                    <CheckCheck className="w-4 h-4" />
-                    <span>4. Marcar Publicado</span>
+                    {markingPublished ? (
+                      <>
+                        <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        <span>Guardando...</span>
+                      </>
+                    ) : selectedDraft.status === 'PUBLISHED' ? (
+                      <>
+                        <CheckCheck className="w-4 h-4 text-emerald-200" />
+                        <span>✓ ¡Publicado en Perfil!</span>
+                      </>
+                    ) : (
+                      <>
+                        <CheckCheck className="w-4 h-4" />
+                        <span>4. Marcar Publicado</span>
+                      </>
+                    )}
                   </button>
                 </div>
 
+                {publishedSuccessMessage && (
+                  <div className="p-3 bg-emerald-50 dark:bg-emerald-950/80 border border-emerald-300 dark:border-emerald-700 rounded-xl text-emerald-800 dark:text-emerald-200 text-xs flex items-center space-x-2 font-medium">
+                    <CheckCircle className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                    <span>{publishedSuccessMessage}</span>
+                  </div>
+                )}
+
                 {/* Vista previa de lo copiado */}
-                <div className="bg-white/80 dark:bg-slate-900/80 p-3 rounded-xl border border-blue-100 dark:border-blue-900/50 text-xs text-slate-700 dark:text-slate-300 font-sans space-y-1">
-                  <div className="flex items-center justify-between text-[11px] font-semibold text-slate-500 mb-1">
-                    <span>Texto optimizado que se copia al portapapeles:</span>
-                    <button onClick={handleCopyFullText} className="text-blue-600 hover:underline">
-                      {copiedText ? 'Copiado ✓' : 'Copiar'}
+                <div className="bg-white/80 dark:bg-slate-900/80 p-3.5 rounded-xl border border-blue-100 dark:border-blue-900/50 text-xs text-slate-700 dark:text-slate-300 font-sans space-y-2">
+                  <div className="flex items-center justify-between text-[11px] font-semibold text-slate-500 pb-1 border-b border-slate-100 dark:border-slate-800">
+                    <span className="font-bold text-slate-700 dark:text-slate-200">
+                      📋 Texto limpio optimizado para Facebook (sin códigos ni etiquetas):
+                    </span>
+                    <button
+                      onClick={handleCopyFullText}
+                      className="px-2.5 py-1 bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 font-semibold rounded-lg hover:bg-blue-100 transition"
+                    >
+                      {copiedText ? '✓ ¡Copiado!' : 'Copiar Todo'}
                     </button>
                   </div>
-                  <p className="font-bold text-slate-900 dark:text-white">{editTitle}</p>
-                  <p className="line-clamp-2 text-slate-600 dark:text-slate-300">{editBody}</p>
-                  <p className="text-slate-500 text-[11px]">
-                    📌 Fuente oficial: {selectedDraft.sourceAttribution} • {selectedDraft.sourceUrl}
+                  <p className="font-bold text-sm text-slate-900 dark:text-white leading-snug">
+                    {editTitle.replace(/^Actualidad:\s*/i, '')}
                   </p>
-                  <p className="text-blue-600 text-[11px] font-medium">
-                    #NoticiasColombia #Actualidad #Tendencia #UltimaHora
+                  <p className="text-slate-600 dark:text-slate-300 leading-relaxed text-xs">
+                    {editBody}
                   </p>
+                  <div className="pt-1 text-[11px] text-slate-500 space-y-0.5">
+                    <p>📌 Fuente: {selectedDraft.sourceAttribution}</p>
+                    <p className="text-blue-600 dark:text-blue-400 font-semibold text-[11px]">
+                      #NoticiasColombia #Tendencia #UltimaHora
+                    </p>
+                  </div>
                 </div>
               </div>
 

@@ -53,6 +53,16 @@ export class DraftsController {
     return this.draftsService.approveDraft(id, user.organizationId, user.userId);
   }
 
+  @Post(':id/publish-manual')
+  @Roles(UserRole.SUPERADMIN, UserRole.ORG_ADMIN, UserRole.EDITOR)
+  async publishManual(
+    @Param('id') id: string,
+    @Body() body: { title?: string; body?: string },
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.draftsService.markAsPublished(id, user.organizationId, user.userId, body);
+  }
+
   @Post(':id/reject')
   @Roles(UserRole.SUPERADMIN, UserRole.ORG_ADMIN, UserRole.EDITOR)
   async reject(

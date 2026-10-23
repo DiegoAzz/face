@@ -131,6 +131,53 @@ export class DraftsService {
     return updated;
   }
 
+  async markAsPublished(
+    draftId: string,
+    organizationId: string,
+    editorId: string,
+    dto?: { title?: string; body?: string }
+  ) {
+    const draft = await this.prisma.draft.findFirst({
+      where: { id: draftId, organizationId },
+    });
+
+    if (!draft) {
+      throw new NotFoundException('Borrador no encontrado');
+    }
+
+    const updated = await this.prisma.draft.update({
+      where: { id: draftId },
+      data: {
+        status: DraftStatus.PUBLISHED,
+        ...(dto?.title ? { title: dto.title.replace(/^Actualidad:\s*/i, '').trim() } : {}),
+        ...(dto?.body ? { body: dto.body } : {}),
+      },
+    });
+
+    await this.prisma.auditLog.create({
+      data: {
+        organizationId,
+        actorId: editorId,
+        action: 'MANUAL_PUBLISH_PERSONAL_PROFILE',
+        targetType: 'DRAFT',
+        targetId: draftId,
+        metadataRedacted: JSON.stringify({ manualPublish: true, title: updated.title }),
+      },
+    });
+
+    return {
+      ...updated,
+      riskFlags: (() => {
+        try {
+          const parsed = JSON.parse(updated.riskFlags);
+          return Array.isArray(parsed) ? parsed : [];
+        } catch {
+          return [];
+        }
+      })(),
+    };
+  }
+
   async rejectDraft(draftId: string, organizationId: string, editorId: string, reason?: string) {
     const draft = await this.prisma.draft.findFirst({
       where: { id: draftId, organizationId },

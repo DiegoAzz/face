@@ -5,6 +5,54 @@ import { MockEditorialLLMAdapter, ExternalLLMAdapter, LLMAdapter, createSafeHttp
 import { XMLParser } from 'fast-xml-parser';
 import * as crypto from 'crypto';
 
+export function decodeHtmlEntities(str: string): string {
+  if (!str) return '';
+  return str
+    .replace(/&#(\d+);/g, (_, dec) => {
+      try {
+        return String.fromCharCode(parseInt(dec, 10));
+      } catch {
+        return _;
+      }
+    })
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => {
+      try {
+        return String.fromCharCode(parseInt(hex, 16));
+      } catch {
+        return _;
+      }
+    })
+    .replace(/&quot;/gi, '"')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&ldquo;|&rdquo;|&#8220;|&#8221;/gi, '"')
+    .replace(/&lsquo;|&rsquo;|&#8216;|&#8217;/gi, "'")
+    .replace(/&ndash;|&mdash;|&#8211;|&#8212;/gi, '-')
+    .replace(/&aacute;/gi, 'á')
+    .replace(/&eacute;/gi, 'é')
+    .replace(/&iacute;/gi, 'í')
+    .replace(/&oacute;/gi, 'ó')
+    .replace(/&uacute;/gi, 'ú')
+    .replace(/&ntilde;/gi, 'ñ')
+    .replace(/&Aacute;/gi, 'Á')
+    .replace(/&Eacute;/gi, 'É')
+    .replace(/&Iacute;/gi, 'Í')
+    .replace(/&Oacute;/gi, 'Ó')
+    .replace(/&Uacute;/gi, 'Ú')
+    .replace(/&Ntilde;/gi, 'Ñ');
+}
+
+export function cleanNewsText(text: string): string {
+  if (!text) return '';
+  const decoded = decodeHtmlEntities(text);
+  return decoded
+    .replace(/<[^>]*>?/gm, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function extractImageUrl(item: any, rawDescription: string): string | null {
   // 1. Enclosure
   if (item.enclosure) {
@@ -289,11 +337,12 @@ export class NewsService implements OnModuleInit {
             // mantener rawLink
           }
 
-          const cleanExcerpt = description.replace(/<[^>]*>?/gm, '').trim().slice(0, 500);
+          const cleanedTitle = cleanNewsText(title);
+          const cleanExcerpt = cleanNewsText(description).slice(0, 500);
 
           const contentHash = crypto
             .createHash('sha256')
-            .update(canonicalUrl + title)
+            .update(canonicalUrl + cleanedTitle)
             .digest('hex');
 
           const publishedAt = new Date(pubDateStr);
@@ -330,8 +379,8 @@ export class NewsService implements OnModuleInit {
               organizationId: source.organizationId,
               sourceId: source.id,
               canonicalUrl,
-              title,
-              excerpt: cleanExcerpt || title,
+              title: cleanedTitle,
+              excerpt: cleanExcerpt || cleanedTitle,
               imageUrl,
               publishedAt: isNaN(publishedAt.getTime()) ? new Date() : publishedAt,
               contentHash,
@@ -342,7 +391,7 @@ export class NewsService implements OnModuleInit {
           // Deduplicación temática y agrupamiento
           const fingerprint = crypto
             .createHash('md5')
-            .update(title.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 60))
+            .update(cleanedTitle.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 60))
             .digest('hex');
 
           const cluster = await this.prisma.storyCluster.upsert({
