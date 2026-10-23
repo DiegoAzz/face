@@ -14,7 +14,9 @@ import {
   ExternalLink,
   Sparkles,
   CheckCheck,
+  Film,
 } from 'lucide-react';
+import { ReelStudioModal } from '../components/ReelStudioModal';
 
 const decodeHtml = (str: string): string => {
   if (!str) return '';
@@ -260,6 +262,7 @@ export const EditorialRoomPage: React.FC = () => {
   const [copiedText, setCopiedText] = useState(false);
   const [markingPublished, setMarkingPublished] = useState(false);
   const [publishedSuccessMessage, setPublishedSuccessMessage] = useState<string | null>(null);
+  const [openReelModal, setOpenReelModal] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -597,38 +600,38 @@ export const EditorialRoomPage: React.FC = () => {
                   </span>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
                   <button
                     onClick={handleCopyFullText}
-                    className="flex items-center justify-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-2.5 rounded-xl text-xs font-semibold shadow transition"
+                    className="flex items-center justify-center space-x-1.5 bg-blue-600 hover:bg-blue-700 text-white px-3 py-2.5 rounded-xl text-xs font-semibold shadow transition"
                   >
-                    <Copy className="w-4 h-4" />
-                    <span>{copiedText ? '¡Copiado con Éxito!' : '1. Copiar Texto'}</span>
+                    <Copy className="w-4 h-4 flex-shrink-0" />
+                    <span className="truncate">{copiedText ? '¡Copiado!' : '1. Copiar'}</span>
                   </button>
 
                   <button
                     onClick={handleDownloadImage}
                     disabled={!selectedDraft.imageUrl}
-                    className="flex items-center justify-center space-x-2 bg-slate-800 hover:bg-slate-900 dark:bg-slate-700 text-white px-3.5 py-2.5 rounded-xl text-xs font-semibold shadow transition disabled:opacity-40"
+                    className="flex items-center justify-center space-x-1.5 bg-slate-800 hover:bg-slate-900 dark:bg-slate-700 text-white px-3 py-2.5 rounded-xl text-xs font-semibold shadow transition disabled:opacity-40"
                   >
-                    <Download className="w-4 h-4" />
-                    <span>2. Abrir / Guardar Foto</span>
+                    <Download className="w-4 h-4 flex-shrink-0" />
+                    <span className="truncate">2. Guardar Foto</span>
                   </button>
 
                   <a
                     href="https://www.facebook.com"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-center justify-center space-x-2 bg-indigo-600 hover:bg-indigo-700 text-white px-3.5 py-2.5 rounded-xl text-xs font-semibold shadow transition"
+                    className="flex items-center justify-center space-x-1.5 bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2.5 rounded-xl text-xs font-semibold shadow transition"
                   >
-                    <ExternalLink className="w-4 h-4" />
-                    <span>3. Ir a Mi Facebook</span>
+                    <ExternalLink className="w-4 h-4 flex-shrink-0" />
+                    <span className="truncate">3. Ir a Mi FB</span>
                   </a>
 
                   <button
                     onClick={handleMarkPublished}
                     disabled={markingPublished || selectedDraft.status === 'PUBLISHED'}
-                    className={`flex items-center justify-center space-x-2 px-3.5 py-2.5 rounded-xl text-xs font-semibold shadow transition ${
+                    className={`flex items-center justify-center space-x-1.5 px-3 py-2.5 rounded-xl text-xs font-semibold shadow transition ${
                       selectedDraft.status === 'PUBLISHED'
                         ? 'bg-emerald-700 text-white cursor-default opacity-95'
                         : 'bg-emerald-600 hover:bg-emerald-700 text-white active:scale-95'
@@ -642,14 +645,23 @@ export const EditorialRoomPage: React.FC = () => {
                     ) : selectedDraft.status === 'PUBLISHED' ? (
                       <>
                         <CheckCheck className="w-4 h-4 text-emerald-200" />
-                        <span>✓ ¡Publicado en Perfil!</span>
+                        <span>✓ Publicado</span>
                       </>
                     ) : (
                       <>
                         <CheckCheck className="w-4 h-4" />
-                        <span>4. Marcar Publicado</span>
+                        <span className="truncate">4. Publicado</span>
                       </>
                     )}
+                  </button>
+
+                  <button
+                    onClick={() => setOpenReelModal(true)}
+                    className="flex items-center justify-center space-x-1.5 bg-gradient-to-r from-pink-600 via-rose-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white px-3 py-2.5 rounded-xl text-xs font-bold shadow-lg shadow-pink-600/20 transition transform active:scale-95"
+                    title="Crear video vertical 9:16 para Reels"
+                  >
+                    <Film className="w-4 h-4 flex-shrink-0 animate-pulse" />
+                    <span className="truncate">🎬 5. Crear Reel</span>
                   </button>
                 </div>
 
@@ -753,6 +765,16 @@ export const EditorialRoomPage: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Modal Estudio de Video Reels */}
+      {openReelModal && selectedDraft && (
+        <ReelStudioModal
+          draft={selectedDraft}
+          title={editTitle}
+          body={editBody}
+          onClose={() => setOpenReelModal(false)}
+        />
+      )}
     </div>
   );
 };
