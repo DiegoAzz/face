@@ -1,5 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import axios from 'axios';
+import { spawn } from 'child_process';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
 
 @Injectable()
 export class MediaService {
@@ -63,15 +67,17 @@ export class MediaService {
 
   /**
    * Proxy para evitar restricciones de CORS en imágenes externas en Canvas.
+   * Con fallback resiliente para que nunca falle la previsualización del video.
    */
   async proxyImage(url: string): Promise<{ buffer: Buffer; contentType: string }> {
     try {
       const res = await axios.get(url, {
         responseType: 'arraybuffer',
-        timeout: 15000,
+        timeout: 12000,
         headers: {
           'User-Agent':
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'NewsFlowBot/1.0 (Mozilla/5.0 Windows NT 10.0; Win64; x64; contact@newsflow.app)',
+          Accept: 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
         },
       });
       return {
@@ -79,8 +85,98 @@ export class MediaService {
         contentType: String(res.headers['content-type'] || 'image/jpeg'),
       };
     } catch (err: any) {
-      throw new Error(`Error descargando imagen externa: ${err.message}`);
+      console.warn(`[ProxyImage] Error descargando ${url}: ${err.message}. Retornando imagen alternativa segura.`);
+      // Devolver una imagen HD periodística confiable en lugar de fallar con 502
+      try {
+        const fallbackUrl = 'https://images.unsplash.com/photo-1585829365295-ab7cd400c167?w=1080&auto=format&fit=crop&q=80';
+        const fbRes = await axios.get(fallbackUrl, { responseType: 'arraybuffer', timeout: 8000 });
+        return {
+          buffer: Buffer.from(fbRes.data),
+          contentType: 'image/jpeg',
+        };
+      } catch {
+        throw new Error(`Error descargando imagen externa: ${err.message}`);
+      }
     }
+  }
+
+  /**
+   * Transcodifica cualquier video de navegador a MP4 estándar H.264 + AAC + faststart
+   * para asegurar que YouTube, Facebook, WhatsApp y reproductores locales lo procesen al 100%.
+   */
+  async fixVideo(videoBase64: string): Promise<{ base64: string; mimeType: string }> {
+    const rawBuffer = Buffer.from(videoBase64, 'base64');
+    if (rawBuffer.length === 0) {
+      throw new Error('Video vacío');
+    }
+
+    const tmpDir = os.tmpdir();
+    const id = `fix_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const inputPath = path.join(tmpDir, `${id}_in.bin`);
+    const outputPath = path.join(tmpDir, `${id}_out.mp4`);
+
+    try {
+      await fs.promises.writeFile(inputPath, rawBuffer);
+
+      await new Promise<void>((resolve, reject) => {
+        const proc = spawn('ffmpeg', [
+          '-y',
+          '-i', inputPath,
+          '-c:v', 'libx264',
+          '-pix_fmt', 'yuv420p',
+          '-preset', 'ultrafast',
+          '-crf', '22',
+          '-c:a', 'aac',
+          '-b:a', '128k',
+          '-ar', '44100',
+          '-movflags', '+faststart',
+          outputPath,
+        ]);
+
+        let stderr = '';
+        proc.stderr?.on('data', (d) => {
+          stderr += d.toString();
+        });
+
+        proc.on('close', (code) => {
+          if (code === 0) {
+            resolve();
+          } else {
+            reject(new Error(`FFmpeg error (código ${code}): ${stderr.slice(-300)}`));
+          }
+        });
+
+        proc.on('error', (err) => {
+          reject(err);
+        });
+      });
+
+      const convertedBuffer = await fs.promises.readFile(outputPath);
+      if (convertedBuffer && convertedBuffer.length > 1000) {
+        return {
+          base64: convertedBuffer.toString('base64'),
+          mimeType: 'video/mp4',
+        };
+      }
+    } catch (err: any) {
+      console.warn('[MediaService] FFmpeg no disponible o falló en fixVideo:', err.message);
+    } finally {
+      try { await fs.promises.unlink(inputPath); } catch {}
+      try { await fs.promises.unlink(outputPath); } catch {}
+    }
+
+    // Fallback: retornar original si FFmpeg no estuvo disponible
+    const isWebM =
+      rawBuffer.length >= 4 &&
+      rawBuffer[0] === 0x1a &&
+      rawBuffer[1] === 0x45 &&
+      rawBuffer[2] === 0xdf &&
+      rawBuffer[3] === 0xa3;
+
+    return {
+      base64: videoBase64,
+      mimeType: isWebM ? 'video/webm' : 'video/mp4',
+    };
   }
 
   /**
@@ -252,7 +348,10 @@ export class MediaService {
       if (seenUrls.has(cleanUrl)) return;
       seenUrls.add(cleanUrl);
 
-      const proxyUrl = `/api/media/proxy?url=${encodeURIComponent(cleanUrl)}`;
+      const proxyUrl = cleanUrl.startsWith('/api/media/proxy')
+        ? cleanUrl
+        : `/api/media/proxy?url=${encodeURIComponent(cleanUrl)}`;
+
       images.push({
         url: proxyUrl,
         thumbUrl: proxyUrl,
@@ -343,27 +442,55 @@ export class MediaService {
           'https://images.unsplash.com/photo-1538108149393-fbbd81895907?w=1080&auto=format&fit=crop&q=80',
           'https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?w=1080&auto=format&fit=crop&q=80',
           'https://images.unsplash.com/photo-1516549655169-df83a0774514?w=1080&auto=format&fit=crop&q=80',
+          'https://images.unsplash.com/photo-1579684385127-1ef15d508118?w=1080&auto=format&fit=crop&q=80',
+          'https://images.unsplash.com/photo-1505751172876-fa1923c5c528?w=1080&auto=format&fit=crop&q=80',
         ],
         deportes: [
           'https://images.unsplash.com/photo-1517649763962-0c623266ddc0?w=1080&auto=format&fit=crop&q=80',
           'https://images.unsplash.com/photo-1508098682722-e99c43a406b2?w=1080&auto=format&fit=crop&q=80',
           'https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=1080&auto=format&fit=crop&q=80',
           'https://images.unsplash.com/photo-1431324155629-1a6deb1dec8d?w=1080&auto=format&fit=crop&q=80',
+          'https://images.unsplash.com/photo-1560272564-c83b66b1ad12?w=1080&auto=format&fit=crop&q=80',
+        ],
+        entretenimiento: [
+          'https://images.unsplash.com/photo-1518173946687-a4c8a383392e?w=1080&auto=format&fit=crop&q=80',
+          'https://images.unsplash.com/photo-1522869635100-9f4c5e86aa37?w=1080&auto=format&fit=crop&q=80',
+          'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=1080&auto=format&fit=crop&q=80',
+          'https://images.unsplash.com/photo-1578022761797-b8636ac1773c?w=1080&auto=format&fit=crop&q=80',
+        ],
+        seguridad: [
+          'https://images.unsplash.com/photo-1589829545856-d10d557cf95f?w=1080&auto=format&fit=crop&q=80',
+          'https://images.unsplash.com/photo-1563245372-f21724e3856d?w=1080&auto=format&fit=crop&q=80',
+          'https://images.unsplash.com/photo-1584438784894-089d6a62b8fa?w=1080&auto=format&fit=crop&q=80',
+          'https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=1080&auto=format&fit=crop&q=80',
+        ],
+        economia: [
+          'https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?w=1080&auto=format&fit=crop&q=80',
+          'https://images.unsplash.com/photo-1526304640581-d334cdbbf45e?w=1080&auto=format&fit=crop&q=80',
+          'https://images.unsplash.com/photo-1590283603385-17ffb3a7f29f?w=1080&auto=format&fit=crop&q=80',
+          'https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?w=1080&auto=format&fit=crop&q=80',
         ],
         general: [
           'https://images.unsplash.com/photo-1585829365295-ab7cd400c167?w=1080&auto=format&fit=crop&q=80',
           'https://images.unsplash.com/photo-1504711434969-e33886168f5c?w=1080&auto=format&fit=crop&q=80',
           'https://images.unsplash.com/photo-1495020689067-958852a7765e?w=1080&auto=format&fit=crop&q=80',
           'https://images.unsplash.com/photo-1586339949916-3e9457bef6d3?w=1080&auto=format&fit=crop&q=80',
+          'https://images.unsplash.com/photo-1583531352515-8884af319dc1?w=1080&auto=format&fit=crop&q=80',
         ],
       };
 
       const titleLower = (params.title || '').toLowerCase();
       const themeKey =
-        titleLower.includes('salud') || titleLower.includes('hospital') || titleLower.includes('médic') || titleLower.includes('oraciones')
+        titleLower.includes('salud') || titleLower.includes('hospital') || titleLower.includes('médic') || titleLower.includes('oraciones') || titleLower.includes('enfermedad') || titleLower.includes('bozzo')
           ? 'salud'
-          : titleLower.includes('deporte') || titleLower.includes('fútbol') || titleLower.includes('gol')
+          : titleLower.includes('deporte') || titleLower.includes('fútbol') || titleLower.includes('futbol') || titleLower.includes('gol') || titleLower.includes('boxeo')
           ? 'deportes'
+          : titleLower.includes('netflix') || titleLower.includes('cine') || titleLower.includes('música') || titleLower.includes('farándula') || titleLower.includes('shakira')
+          ? 'entretenimiento'
+          : titleLower.includes('polic') || titleLower.includes('seguridad') || titleLower.includes('crimen') || titleLower.includes('bomba')
+          ? 'seguridad'
+          : titleLower.includes('dólar') || titleLower.includes('dolar') || titleLower.includes('econom') || titleLower.includes('precio')
+          ? 'economia'
           : 'general';
 
       const pool = fallbackThemes[themeKey] || fallbackThemes.general;

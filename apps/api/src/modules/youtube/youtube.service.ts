@@ -2,6 +2,10 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { PrismaService } from '../prisma/prisma.service';
 import { encryptSecret, decryptSecret } from '@newsflow/integrations';
 import axios from 'axios';
+import { spawn } from 'child_process';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
 
 @Injectable()
 export class YouTubeService {
@@ -307,6 +311,77 @@ export class YouTubeService {
   }
 
   /**
+   * Remuxa y transcodifica un buffer de video a formato MP4 estándar (H.264 + AAC)
+   * con el átomo moov al inicio (+faststart) para garantizar que YouTube lo procese sin errores.
+   */
+  async transcodeToYouTubeMP4(inputBuffer: Buffer): Promise<{ buffer: Buffer; mimeType: string }> {
+    const tmpDir = os.tmpdir();
+    const id = `yt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const inputPath = path.join(tmpDir, `${id}_in.bin`);
+    const outputPath = path.join(tmpDir, `${id}_out.mp4`);
+
+    try {
+      await fs.promises.writeFile(inputPath, inputBuffer);
+
+      await new Promise<void>((resolve, reject) => {
+        const proc = spawn('ffmpeg', [
+          '-y',
+          '-i', inputPath,
+          '-c:v', 'libx264',
+          '-pix_fmt', 'yuv420p',
+          '-preset', 'ultrafast',
+          '-crf', '22',
+          '-c:a', 'aac',
+          '-b:a', '128k',
+          '-ar', '44100',
+          '-movflags', '+faststart',
+          outputPath,
+        ]);
+
+        let stderr = '';
+        proc.stderr?.on('data', (d) => {
+          stderr += d.toString();
+        });
+
+        proc.on('close', (code) => {
+          if (code === 0) {
+            resolve();
+          } else {
+            reject(new Error(`FFmpeg error (código ${code}): ${stderr.slice(-300)}`));
+          }
+        });
+
+        proc.on('error', (err) => {
+          reject(err);
+        });
+      });
+
+      const convertedBuffer = await fs.promises.readFile(outputPath);
+      if (convertedBuffer && convertedBuffer.length > 1000) {
+        return { buffer: convertedBuffer, mimeType: 'video/mp4' };
+      }
+    } catch (err: any) {
+      console.warn('[YouTube Service] FFmpeg no disponible o falló conversión, usando buffer original:', err.message);
+    } finally {
+      try { await fs.promises.unlink(inputPath); } catch {}
+      try { await fs.promises.unlink(outputPath); } catch {}
+    }
+
+    // Fallback: detectar si es webm o mp4
+    const isWebM =
+      inputBuffer.length >= 4 &&
+      inputBuffer[0] === 0x1a &&
+      inputBuffer[1] === 0x45 &&
+      inputBuffer[2] === 0xdf &&
+      inputBuffer[3] === 0xa3;
+
+    return {
+      buffer: inputBuffer,
+      mimeType: isWebM ? 'video/webm' : 'video/mp4',
+    };
+  }
+
+  /**
    * Sube un video vertical directamente como YouTube Short de forma 100% automática.
    */
   async publishShort(
@@ -327,21 +402,14 @@ export class YouTubeService {
     }
 
     const accessToken = await this.getFreshAccessToken(channel);
-    const videoBuffer = Buffer.from(data.videoBase64, 'base64');
+    const rawBuffer = Buffer.from(data.videoBase64, 'base64');
 
-    if (videoBuffer.length === 0) {
+    if (rawBuffer.length === 0) {
       throw new BadRequestException('El archivo de video está vacío o dañado.');
     }
 
-    // Detectar si el contenedor del video es WebM (0x1A 0x45 0xDF 0xA3) o MP4
-    const isWebM =
-      videoBuffer.length >= 4 &&
-      videoBuffer[0] === 0x1a &&
-      videoBuffer[1] === 0x45 &&
-      videoBuffer[2] === 0xdf &&
-      videoBuffer[3] === 0xa3;
-
-    const mimeType = isWebM ? 'video/webm' : 'video/mp4';
+    // Transcodificar con FFmpeg a MP4 estándar H.264 + AAC + faststart para que YouTube procese el archivo sin rechazarlo
+    const { buffer: videoBuffer, mimeType } = await this.transcodeToYouTubeMP4(rawBuffer);
 
     // Limpieza estricta del título según requisitos de YouTube Data API v3 (sin saltos de línea ni caracteres prohibidos < >)
     let cleanTitle = (data.title || 'Short')

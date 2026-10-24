@@ -769,6 +769,7 @@ export const EditorialRoomPage: React.FC = () => {
       {/* Modal Estudio de Video Reels */}
       {openReelModal && selectedDraft && (
         <ReelStudioModal
+          key={selectedDraft.id}
           draft={selectedDraft}
           title={editTitle}
           body={editBody}

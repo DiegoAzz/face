@@ -7,7 +7,7 @@ FROM node:20-alpine
 WORKDIR /app
 
 # Instalar dependencias nativas y OpenSSL ANTES de generar Prisma
-RUN apk add --no-cache curl openssl python3 make g++ libc6-compat
+RUN apk add --no-cache curl openssl python3 make g++ libc6-compat ffmpeg
 
 # Copiar configuración del monorepo y código fuente
 COPY package*.json ./

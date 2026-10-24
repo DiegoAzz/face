@@ -29,6 +29,9 @@ import {
   MoveVertical,
   Sliders,
   ArrowLeftRight,
+  Type,
+  RotateCcw,
+  Edit3,
 } from 'lucide-react';
 
 interface ReelStudioModalProps {
@@ -264,6 +267,13 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
   // Limpieza estricta: SIN EMOJIS, SOLO LA NOTICIA PURA
   const cleanPureTitle = cleanNewsForNarration(title || draft?.title || '');
   const cleanPureBody = cleanNewsForNarration(body || draft?.body || '');
+  const [customTitle, setCustomTitle] = useState<string>(cleanNewsForNarration(title || draft?.title || ''));
+  const [customBody, setCustomBody] = useState<string>(cleanNewsForNarration(body || draft?.body || ''));
+
+  // Cintillo Inferior Rojo editable por el usuario
+  const defaultTicker = `🚨 ÚLTIMA HORA • NOTICIA CONFIRMADA • FUENTE: ${draft?.sourceAttribution || 'PORTAFOLIO'} • COMPARTE ESTE VIDEO EN TIKTOK, REELS Y SHORTS • `;
+  const [tickerText, setTickerText] = useState<string>(defaultTicker);
+  const [showTicker, setShowTicker] = useState<boolean>(true);
 
   // Detección de imágenes sugeridas
   const categoryKey = detectThemeCategory(`${cleanPureTitle} ${cleanPureBody}`);
@@ -332,15 +342,15 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
   // Subtítulos virales con ráfagas cortas adaptadas exactamente a la duración del video
   const subtitleChunks = React.useMemo(() => {
     const wordsCount = Math.max(8, Math.round(totalClipsDuration * 2.4));
-    const fullText = `${cleanPureTitle}. ${cleanPureBody}`;
+    const fullText = `${customTitle}. ${customBody}`;
     const words = fullText.split(/\s+/).filter(Boolean).slice(0, wordsCount);
     const chunks: string[] = [];
     const chunkSize = 3;
     for (let i = 0; i < words.length; i += chunkSize) {
       chunks.push(words.slice(i, i + chunkSize).join(' '));
     }
-    return chunks.length > 0 ? chunks : [cleanPureTitle];
-  }, [cleanPureTitle, cleanPureBody, totalClipsDuration]);
+    return chunks.length > 0 ? chunks : [customTitle];
+  }, [customTitle, customBody, totalClipsDuration]);
 
   // Buscador de imágenes de Internet
   const initialSearchWord = cleanPureTitle.split(' ').slice(0, 3).join(' ');
@@ -359,6 +369,42 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
   const [isPublishingToYt, setIsPublishingToYt] = useState<boolean>(false);
 
   const [publishNotice, setPublishNotice] = useState<string | null>(null);
+
+  // MANIPULACIÓN DIRECTA DE ELEMENTOS EN CANVAS (ESTILO CAPCUT)
+  const [selectedElement, setSelectedElement] = useState<'image' | 'title' | 'subtitles' | 'ticker' | string>('image');
+  const [titlePos, setTitlePos] = useState<{ x: number; y: number }>({ x: 40, y: 720 });
+  const [subtitlesPos, setSubtitlesPos] = useState<{ x: number; y: number }>({ x: 360, y: 940 });
+  const [overlays, setOverlays] = useState<Array<{
+    id: string;
+    text: string;
+    x: number;
+    y: number;
+    fontSize: number;
+    color: string;
+    bgColor: string;
+    isBadge?: boolean;
+  }>>([
+    {
+      id: 'badge_alerta',
+      text: '🚨 ÚLTIMA HORA',
+      x: 360,
+      y: 190,
+      fontSize: 22,
+      color: '#ffffff',
+      bgColor: '#dc2626',
+      isBadge: true,
+    },
+  ]);
+  const isDraggingElementRef = useRef<boolean>(false);
+  const dragStartRef = useRef<{
+    startX: number;
+    startY: number;
+    origX: number;
+    origY: number;
+    target: string;
+  } | null>(null);
+  const activeClipIndexRef = useRef<number>(0);
+  activeClipIndexRef.current = activeClipIndex;
 
   // Referencias multimedia
   const animationFrameRef = useRef<number | null>(null);
@@ -485,18 +531,19 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
 
   // Precargar imágenes de todos los clips
   useEffect(() => {
-    loadedImagesRef.current = [];
+
     clips.forEach((clip, idx) => {
       const img = new Image();
       img.crossOrigin = 'anonymous';
       img.src = clip.url;
       img.onload = () => {
         loadedImagesRef.current[idx] = img;
-        if (idx === activeClipIndex) drawFrame(currentTime / totalClipsDuration);
+        drawFrame(currentTime / totalClipsDuration);
       };
       img.onerror = () => {
         if (suggestedStock[idx]) {
-          img.src = suggestedStock[idx];
+          const fallbackUrl = suggestedStock[idx % suggestedStock.length] || suggestedStock[0];
+          img.src = fallbackUrl;
         }
       };
     });
@@ -803,7 +850,7 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
     let accum = 0;
     for (let i = 0; i < clips.length; i++) {
       accum += clips[i].duration;
-      if (newTime <= accum || i === clips.length - 1) {
+      if (newTime < accum + clips[i].duration || i === clips.length - 1) {
         setActiveClipIndex(i);
         break;
       }
@@ -899,7 +946,7 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
       if (voiceVolume > 0) {
         // Adaptar la cantidad de texto exactamente a la duración del video
         const wordsCount = Math.max(8, Math.round(totalClipsDuration * 2.4));
-        const fullText = `${cleanPureTitle}. ${cleanPureBody}`;
+        const fullText = `${customTitle}. ${customBody}`;
         const spokenText = fullText.split(/\s+/).filter(Boolean).slice(0, wordsCount).join(' ');
         const ttsUrl = `/api/media/tts?text=${encodeURIComponent(spokenText)}&lang=${activeNarrator.lang}&t=${Date.now()}`;
         const audio = new Audio(ttsUrl);
@@ -949,6 +996,228 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
     }
   };
 
+  // MANIPULACIÓN DIRECTA DE ELEMENTOS EN EL CANVAS (ESTILO CAPCUT)
+  const getCanvasCoords = (clientX: number, clientY: number) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return { x: 0, y: 0 };
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = 720 / rect.width;
+    const scaleY = 1280 / rect.height;
+    return {
+      x: (clientX - rect.left) * scaleX,
+      y: (clientY - rect.top) * scaleY,
+    };
+  };
+
+  const startElementDrag = (canvasX: number, canvasY: number, clientX: number, clientY: number) => {
+    // 1. Ticker inferior rojo (y: 1120 a 1200)
+    if (showTicker && canvasY >= 1120 && canvasY <= 1200) {
+      setSelectedElement('ticker');
+      isDraggingElementRef.current = false;
+      drawFrame(currentTime / totalClipsDuration);
+      return;
+    }
+
+    // 2. Overlays / Stickers personalizados
+    for (let i = overlays.length - 1; i >= 0; i--) {
+      const ov = overlays[i];
+      const estW = ov.text.length * (ov.fontSize * 0.6) + 36;
+      const estH = ov.fontSize + 24;
+      if (
+        canvasX >= ov.x - estW / 2 &&
+        canvasX <= ov.x + estW / 2 &&
+        canvasY >= ov.y - estH / 2 &&
+        canvasY <= ov.y + estH / 2
+      ) {
+        setSelectedElement(ov.id);
+        isDraggingElementRef.current = true;
+        dragStartRef.current = {
+          startX: clientX,
+          startY: clientY,
+          origX: ov.x,
+          origY: ov.y,
+          target: ov.id,
+        };
+        drawFrame(currentTime / totalClipsDuration);
+        return;
+      }
+    }
+
+    // 3. Subtítulos (alrededor de subtitlesPos.y)
+    if (canvasY >= subtitlesPos.y - 15 && canvasY <= subtitlesPos.y + 65) {
+      setSelectedElement('subtitles');
+      isDraggingElementRef.current = true;
+      dragStartRef.current = {
+        startX: clientX,
+        startY: clientY,
+        origX: subtitlesPos.x,
+        origY: subtitlesPos.y,
+        target: 'subtitles',
+      };
+      drawFrame(currentTime / totalClipsDuration);
+      return;
+    }
+
+    // 4. Titular (alrededor de titlePos.y)
+    if (canvasY >= titlePos.y - 45 && canvasY <= titlePos.y + 190) {
+      setSelectedElement('title');
+      isDraggingElementRef.current = true;
+      dragStartRef.current = {
+        startX: clientX,
+        startY: clientY,
+        origX: titlePos.x,
+        origY: titlePos.y,
+        target: 'title',
+      };
+      drawFrame(currentTime / totalClipsDuration);
+      return;
+    }
+
+    // 5. De lo contrario, manipula la Foto activa
+    setSelectedElement('image');
+    isDraggingElementRef.current = true;
+    const curClip = clips[activeClipIndex];
+    dragStartRef.current = {
+      startX: clientX,
+      startY: clientY,
+      origX: curClip?.offsetX || 0,
+      origY: curClip?.offsetY || 0,
+      target: 'image',
+    };
+    drawFrame(currentTime / totalClipsDuration);
+  };
+
+  const handleCanvasMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const { x, y } = getCanvasCoords(e.clientX, e.clientY);
+    startElementDrag(x, y, e.clientX, e.clientY);
+  };
+
+  const handleCanvasTouchStart = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    if (e.touches.length === 0) return;
+    const touch = e.touches[0];
+    const { x, y } = getCanvasCoords(touch.clientX, touch.clientY);
+    startElementDrag(x, y, touch.clientX, touch.clientY);
+  };
+
+  const moveElementDrag = (clientX: number, clientY: number) => {
+    const canvas = canvasRef.current;
+    if (!canvas || !dragStartRef.current) return;
+    const rect = canvas.getBoundingClientRect();
+    const scale = 720 / rect.width;
+    const deltaX = (clientX - dragStartRef.current.startX) * scale;
+    const deltaY = (clientY - dragStartRef.current.startY) * scale;
+    const target = dragStartRef.current.target;
+
+    if (target === 'image') {
+      const newOffsetX = Math.max(-280, Math.min(280, Math.round(dragStartRef.current.origX + deltaX)));
+      const newOffsetY = Math.max(-280, Math.min(280, Math.round(dragStartRef.current.origY + deltaY)));
+      setClips((prev) => {
+        const updated = [...prev];
+        if (updated[activeClipIndex]) {
+          updated[activeClipIndex] = {
+            ...updated[activeClipIndex],
+            offsetX: newOffsetX,
+            offsetY: newOffsetY,
+          };
+        }
+        return updated;
+      });
+    } else if (target === 'title') {
+      const newX = Math.max(10, Math.min(250, Math.round(dragStartRef.current.origX + deltaX)));
+      const newY = Math.max(120, Math.min(1050, Math.round(dragStartRef.current.origY + deltaY)));
+      setTitlePos({ x: newX, y: newY });
+    } else if (target === 'subtitles') {
+      const newX = Math.max(120, Math.min(600, Math.round(dragStartRef.current.origX + deltaX)));
+      const newY = Math.max(180, Math.min(1080, Math.round(dragStartRef.current.origY + deltaY)));
+      setSubtitlesPos({ x: newX, y: newY });
+    } else {
+      setOverlays((prev) =>
+        prev.map((ov) => {
+          if (ov.id === target) {
+            return {
+              ...ov,
+              x: Math.max(60, Math.min(660, Math.round(dragStartRef.current!.origX + deltaX))),
+              y: Math.max(90, Math.min(1150, Math.round(dragStartRef.current!.origY + deltaY))),
+            };
+          }
+          return ov;
+        })
+      );
+    }
+
+    drawFrame(currentTime / totalClipsDuration);
+  };
+
+  const handleCanvasMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!isDraggingElementRef.current || !dragStartRef.current) return;
+    moveElementDrag(e.clientX, e.clientY);
+  };
+
+  const handleCanvasTouchMove = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    if (!isDraggingElementRef.current || !dragStartRef.current || e.touches.length === 0) return;
+    const touch = e.touches[0];
+    moveElementDrag(touch.clientX, touch.clientY);
+  };
+
+  const endElementDrag = () => {
+    isDraggingElementRef.current = false;
+    dragStartRef.current = null;
+  };
+
+  const handleCanvasWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    const delta = e.deltaY < 0 ? 0.05 : -0.05;
+    handleUpdateActiveClipScale(delta);
+  };
+
+  const handleAddCustomTextOverlay = (initialText?: string) => {
+    const text = initialText || prompt('Texto para el distintivo o sticker del video:', '🔥 EXCLUSIVO') || '';
+    if (!text.trim()) return;
+    const newOv = {
+      id: `overlay_${Date.now()}`,
+      text: text.trim().toUpperCase(),
+      x: 360,
+      y: 420,
+      fontSize: 24,
+      color: '#ffffff',
+      bgColor: '#dc2626',
+      isBadge: true,
+    };
+    setOverlays((prev) => [...prev, newOv]);
+    setSelectedElement(newOv.id);
+    setPublishNotice(`✓ Elemento "${text.trim()}" añadido al Canvas. Arrástralo a cualquier posición.`);
+    drawFrame(currentTime / totalClipsDuration);
+  };
+
+  const handleDeleteSelectedElement = () => {
+    if (selectedElement === 'image' || selectedElement === 'title' || selectedElement === 'subtitles' || selectedElement === 'ticker') {
+      return;
+    }
+    setOverlays((prev) => prev.filter((ov) => ov.id !== selectedElement));
+    setSelectedElement('image');
+    setPublishNotice('✓ Elemento eliminado del Canvas.');
+    drawFrame(currentTime / totalClipsDuration);
+  };
+
+  const handleResetPositions = () => {
+    setTitlePos({ x: 40, y: 720 });
+    setSubtitlesPos({ x: 360, y: 940 });
+    setClips((prev) => {
+      const updated = [...prev];
+      if (updated[activeClipIndex]) {
+        updated[activeClipIndex] = {
+          ...updated[activeClipIndex],
+          offsetX: 0,
+          offsetY: 0,
+          scale: 1.0,
+        };
+      }
+      return updated;
+    });
+    setPublishNotice('✓ Posiciones restablecidas al centro original.');
+    drawFrame(currentTime / totalClipsDuration);
+  };
+
   // DIBUJAR FRAME (720x1280 Vertical 9:16)
   const drawFrame = (progress: number) => {
     const canvas = canvasRef.current;
@@ -968,7 +1237,7 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
 
     for (let i = 0; i < clips.length; i++) {
       const end = accum + clips[i].duration;
-      if (currentSec >= accum && currentSec <= end) {
+      if (currentSec < accum + clips[i].duration || i === clips.length - 1) {
         activeIdx = i;
         clipStartSec = accum;
         break;
@@ -1033,7 +1302,10 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
         ? Math.min(Math.max((currentSec - clipStartSec) / currentClip.duration, 0), 1)
         : 0;
 
-      const img = loadedImagesRef.current[activeIdx];
+      let img = loadedImagesRef.current[activeIdx];
+      if (!img || !img.complete || img.naturalWidth === 0) {
+        img = loadedImagesRef.current.find((im) => im && im.complete && im.naturalWidth > 0) || null;
+      }
       if (img && img.complete && img.naturalWidth > 0) {
         ctx.save();
         const clipScale = currentClip?.scale || 1.0;
@@ -1102,13 +1374,11 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
         }
 
         const imgCenterX = width / 2;
-        const imgCenterY = Math.min(drawH / 2, 430);
+        const imgCenterY = Math.min(drawH / 2, 440);
 
         ctx.translate(imgCenterX + panX, imgCenterY + panY);
         ctx.scale(zoom, zoom);
-        ctx.translate(-(imgCenterX + panX), -(imgCenterY + panY));
-
-        ctx.drawImage(img, (width - drawW) / 2 + panX, panY, drawW, drawH);
+        ctx.drawImage(img, -drawW / 2, -drawH / 2, drawW, drawH);
         ctx.restore();
       } else {
         ctx.fillStyle = '#0f172a';
@@ -1196,27 +1466,26 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
     };
 
     const maxTitleWidth = width - 80;
-    let titleLines = wrapTitle(cleanPureTitle, maxTitleWidth);
+    let titleLines = wrapTitle(customTitle, maxTitleWidth);
 
     // Si aún con ese tamaño salen más de 4 líneas, reducir un poco más la fuente para que quepa TODO
     if (titleLines.length > 4) {
       titleFontSize = 22;
       ctx.font = `900 ${titleFontSize}px system-ui, -apple-system, sans-serif`;
-      titleLines = wrapTitle(cleanPureTitle, maxTitleWidth);
+      titleLines = wrapTitle(customTitle, maxTitleWidth);
     }
 
     const lineHeight = titleFontSize + 11;
-    // Posicionar verticalmente de forma óptima para que no choque con los subtítulos
     const totalTitleHeight = titleLines.length * lineHeight;
-    const startY = Math.min(860 - totalTitleHeight, 710);
+    const startY = titlePos.y;
 
     titleLines.forEach((line, idx) => {
       const y = startY + idx * lineHeight;
       ctx.strokeStyle = '#000000';
       ctx.lineWidth = 7;
-      ctx.strokeText(line, 40, y);
+      ctx.strokeText(line, titlePos.x, y);
       ctx.fillStyle = '#ffffff';
-      ctx.fillText(line, 40, y);
+      ctx.fillText(line, titlePos.x, y);
     });
     ctx.restore();
 
@@ -1243,8 +1512,8 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
     const pillPaddingX = 24;
     const pillWidth = Math.min(measuredWidth + pillPaddingX * 2, width - 80);
     const pillHeight = subFontSize + 24;
-    const pillX = (width - pillWidth) / 2;
-    const pillY = 940;
+    const pillX = subtitlesPos.x - pillWidth / 2;
+    const pillY = subtitlesPos.y;
     const textY = pillY + pillHeight / 2 + subFontSize * 0.35;
 
     if (subtitleStyle === 'capcut_yellow') {
@@ -1258,9 +1527,9 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
 
       ctx.strokeStyle = '#000000';
       ctx.lineWidth = 5;
-      ctx.strokeText(rawSubtitle, width / 2, textY);
+      ctx.strokeText(rawSubtitle, subtitlesPos.x, textY);
       ctx.fillStyle = '#FACC15';
-      ctx.fillText(rawSubtitle, width / 2, textY);
+      ctx.fillText(rawSubtitle, subtitlesPos.x, textY);
     } else if (subtitleStyle === 'breaking_red') {
       ctx.fillStyle = '#dc2626';
       ctx.beginPath();
@@ -1271,7 +1540,7 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
       ctx.stroke();
 
       ctx.fillStyle = '#ffffff';
-      ctx.fillText(rawSubtitle, width / 2, textY);
+      ctx.fillText(rawSubtitle, subtitlesPos.x, textY);
     } else {
       ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
       ctx.beginPath();
@@ -1279,29 +1548,172 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
       ctx.fill();
 
       ctx.fillStyle = '#0f172a';
-      ctx.fillText(rawSubtitle, width / 2, textY);
+      ctx.fillText(rawSubtitle, subtitlesPos.x, textY);
     }
     ctx.restore();
+
+    // 6b. ELEMENTOS ADICIONALES / STICKERS / DISTINTIVOS AGREGADOS
+    overlays.forEach((ov) => {
+      ctx.save();
+      ctx.textAlign = 'center';
+      ctx.font = `900 ${ov.fontSize}px system-ui, -apple-system, sans-serif`;
+      const measured = ctx.measureText(ov.text).width;
+      const padX = 18;
+      const boxW = measured + padX * 2;
+      const boxH = ov.fontSize + 16;
+      const boxX = ov.x - boxW / 2;
+      const boxY = ov.y - boxH / 2;
+
+      ctx.fillStyle = ov.bgColor || '#dc2626';
+      ctx.beginPath();
+      ctx.roundRect(boxX, boxY, boxW, boxH, 10);
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      ctx.fillStyle = ov.color || '#ffffff';
+      ctx.fillText(ov.text, ov.x, ov.y + ov.fontSize * 0.35);
+      ctx.restore();
+    });
 
     // 7. CINTILLO / TICKER INFERIOR
     ctx.save();
     ctx.fillStyle = '#b91c1c';
     ctx.fillRect(0, 1135, width, 55);
 
-    const tickerText = `🚨 ÚLTIMA HORA • NOTICIA CONFIRMADA • FUENTE: ${draft?.sourceAttribution || 'EL TIEMPO'} • COMPARTE ESTE VIDEO EN TIKTOK, REELS Y SHORTS • `;
+    const displayText = tickerText.endsWith(' • ') ? tickerText : `${tickerText} • `;
     ctx.font = 'bold 20px system-ui, sans-serif';
     ctx.fillStyle = '#ffffff';
     ctx.textAlign = 'left';
 
-    const textWidth = ctx.measureText(tickerText).width;
+    const textWidth = Math.max(ctx.measureText(displayText).width, 100);
     const tickerOffset = (progress * 1800) % textWidth;
-    ctx.fillText(tickerText, -tickerOffset, 1170);
-    ctx.fillText(tickerText, textWidth - tickerOffset, 1170);
+    ctx.fillText(displayText, -tickerOffset, 1170);
+    ctx.fillText(displayText, textWidth - tickerOffset, 1170);
+    ctx.fillText(displayText, textWidth * 2 - tickerOffset, 1170);
     ctx.restore();
 
     // 8. BARRA DE PROGRESO INFERIOR
     ctx.fillStyle = '#FACC15';
     ctx.fillRect(0, height - 8, width * progress, 8);
+
+    // ==========================================
+    // CONTROLES VISUALES CAPCUT EN VIVO (MANIPULACIÓN DIRECTA)
+    // ==========================================
+    if (!isRecording) {
+      ctx.save();
+      if (selectedElement === 'title') {
+        const boxLeft = titlePos.x - 10;
+        const boxTop = titlePos.y - titleFontSize;
+        const boxWidth = maxTitleWidth + 20;
+        const boxHeight = totalTitleHeight + 20;
+        ctx.strokeStyle = '#38bdf8';
+        ctx.lineWidth = 3;
+        ctx.setLineDash([8, 6]);
+        ctx.strokeRect(boxLeft, boxTop, boxWidth, boxHeight);
+        ctx.setLineDash([]);
+
+        ctx.fillStyle = '#ffffff';
+        [[boxLeft, boxTop], [boxLeft + boxWidth, boxTop], [boxLeft, boxTop + boxHeight], [boxLeft + boxWidth, boxTop + boxHeight]].forEach(([cx, cy]) => {
+          ctx.beginPath();
+          ctx.arc(cx, cy, 7, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = '#0284c7';
+          ctx.stroke();
+        });
+
+        ctx.fillStyle = '#0284c7';
+        ctx.beginPath();
+        ctx.roundRect(boxLeft, boxTop - 32, 230, 26, 6);
+        ctx.fill();
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 13px system-ui, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText('🔤 Titular (Arrastra para mover)', boxLeft + 10, boxTop - 15);
+      } else if (selectedElement === 'subtitles') {
+        const boxLeft = pillX - 6;
+        const boxTop = pillY - 6;
+        const boxWidth = pillWidth + 12;
+        const boxHeight = pillHeight + 12;
+        ctx.strokeStyle = '#FACC15';
+        ctx.lineWidth = 3;
+        ctx.setLineDash([8, 6]);
+        ctx.strokeRect(boxLeft, boxTop, boxWidth, boxHeight);
+        ctx.setLineDash([]);
+
+        ctx.fillStyle = '#ffffff';
+        [[boxLeft, boxTop], [boxLeft + boxWidth, boxTop], [boxLeft, boxTop + boxHeight], [boxLeft + boxWidth, boxTop + boxHeight]].forEach(([cx, cy]) => {
+          ctx.beginPath();
+          ctx.arc(cx, cy, 7, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = '#ca8a04';
+          ctx.stroke();
+        });
+
+        ctx.fillStyle = '#ca8a04';
+        ctx.beginPath();
+        ctx.roundRect(boxLeft, boxTop - 32, 260, 26, 6);
+        ctx.fill();
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 13px system-ui, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText('💬 Subtítulos (Arrastra para mover)', boxLeft + 10, boxTop - 15);
+      } else if (selectedElement === 'ticker') {
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth = 3;
+        ctx.setLineDash([8, 6]);
+        ctx.strokeRect(0, 1133, width, 59);
+        ctx.setLineDash([]);
+
+        ctx.fillStyle = '#b91c1c';
+        ctx.beginPath();
+        ctx.roundRect(20, 1100, 280, 26, 6);
+        ctx.fill();
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 13px system-ui, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText('🔴 Cintillo (Editable abajo o en panel)', 30, 1118);
+      } else if (selectedElement === 'image') {
+        ctx.strokeStyle = 'rgba(56, 189, 248, 0.45)';
+        ctx.lineWidth = 3;
+        ctx.setLineDash([10, 8]);
+        ctx.strokeRect(8, 8, width - 16, height - 16);
+        ctx.setLineDash([]);
+
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
+        ctx.beginPath();
+        ctx.roundRect(width / 2 - 200, height - 55, 400, 32, 16);
+        ctx.fill();
+        ctx.fillStyle = '#38bdf8';
+        ctx.font = 'bold 13px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('🖼️ Foto Activa: Arrastra para encuadrar • Rueda para zoom', width / 2, height - 34);
+      } else {
+        const selOv = overlays.find((ov) => ov.id === selectedElement);
+        if (selOv) {
+          const estW = selOv.text.length * (selOv.fontSize * 0.6) + 36;
+          const estH = selOv.fontSize + 24;
+          const boxLeft = selOv.x - estW / 2;
+          const boxTop = selOv.y - estH / 2;
+          ctx.strokeStyle = '#ec4899';
+          ctx.lineWidth = 3;
+          ctx.setLineDash([8, 6]);
+          ctx.strokeRect(boxLeft, boxTop, estW, estH);
+          ctx.setLineDash([]);
+
+          ctx.fillStyle = '#be185d';
+          ctx.beginPath();
+          ctx.roundRect(boxLeft, boxTop - 28, 240, 24, 6);
+          ctx.fill();
+          ctx.fillStyle = '#ffffff';
+          ctx.font = 'bold 12px system-ui, sans-serif';
+          ctx.textAlign = 'left';
+          ctx.fillText('⭐ Elemento (Arrastra para mover)', boxLeft + 8, boxTop - 12);
+        }
+      }
+      ctx.restore();
+    }
   };
 
   // CONTROL DE REPRODUCCIÓN EN VIVO
@@ -1325,6 +1737,21 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
       const curSec = progress * totalClipsDuration;
 
       setCurrentTime(curSec);
+
+      // Sincronizar activeClipIndex automáticamente con el clip actual
+      let syncAccum = 0;
+      let curActive = 0;
+      for (let i = 0; i < clips.length; i++) {
+        if (curSec < syncAccum + clips[i].duration || i === clips.length - 1) {
+          curActive = i;
+          break;
+        }
+        syncAccum += clips[i].duration;
+      }
+      if (curActive !== activeClipIndexRef.current) {
+        activeClipIndexRef.current = curActive;
+        setActiveClipIndex(curActive);
+      }
       drawFrame(progress);
 
       if (progress < 1) {
@@ -1391,9 +1818,27 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
           if (e.data && e.data.size > 0) chunks.push(e.data);
         };
 
-        recorder.onstop = () => {
-          const blob = new Blob(chunks, { type: mimeType });
-          resolve(blob);
+        recorder.onstop = async () => {
+          const rawBlob = new Blob(chunks, { type: mimeType });
+          try {
+            setPublishNotice('⏳ Procesando y normalizando video MP4 con FFmpeg...');
+            const rawBase64 = await blobToBase64(rawBlob);
+            const fixRes = await api.post('/media/fix-video', { videoBase64: rawBase64 });
+            if (fixRes.data?.base64) {
+              const byteCharacters = atob(fixRes.data.base64);
+              const byteNumbers = new Array(byteCharacters.length);
+              for (let i = 0; i < byteCharacters.length; i++) {
+                byteNumbers[i] = byteCharacters.charCodeAt(i);
+              }
+              const byteArray = new Uint8Array(byteNumbers);
+              const cleanBlob = new Blob([byteArray], { type: 'video/mp4' });
+              resolve(cleanBlob);
+              return;
+            }
+          } catch (e: any) {
+            console.warn('Fallo transcodificación en backend, usando blob original:', e.message);
+          }
+          resolve(rawBlob);
         };
 
         recorder.start();
@@ -1647,35 +2092,104 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
 
         {/* Layout Responsivo: 2 Columnas (Player + Suite de Edición) */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-          {/* COLUMNA 1: REPRODUCTOR VERTICAL 9:16 */}
+          {/* COLUMNA 1: REPRODUCTOR VERTICAL 9:16 ESTILO CAPCUT */}
           <div className="lg:col-span-5 flex flex-col items-center">
+            {/* Barra CapCut: Selector de Elemento Activo en Canvas */}
+            <div className="w-full max-w-[280px] mb-2 bg-slate-800/95 p-1.5 rounded-2xl border border-slate-700 shadow-md text-xs">
+              <div className="flex items-center justify-between text-[11px] font-bold text-slate-300 pb-1 mb-1 border-b border-slate-700/60">
+                <span className="flex items-center space-x-1">
+                  <Sparkles className="w-3.5 h-3.5 text-sky-400" />
+                  <span>Editor Directo en Pantalla</span>
+                </span>
+                <span className="text-[9px] text-sky-400 font-normal">Arrastra con el mouse</span>
+              </div>
+              <div className="flex flex-wrap gap-1">
+                <button
+                  type="button"
+                  onClick={() => { setSelectedElement('image'); drawFrame(currentTime / totalClipsDuration); }}
+                  className={`px-2 py-1 rounded-lg text-[10px] font-bold transition ${
+                    selectedElement === 'image'
+                      ? 'bg-sky-600 text-white shadow'
+                      : 'bg-slate-700/60 text-slate-300 hover:bg-slate-700'
+                  }`}
+                >
+                  🖼️ Foto
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setSelectedElement('title'); drawFrame(currentTime / totalClipsDuration); }}
+                  className={`px-2 py-1 rounded-lg text-[10px] font-bold transition ${
+                    selectedElement === 'title'
+                      ? 'bg-amber-600 text-white shadow'
+                      : 'bg-slate-700/60 text-slate-300 hover:bg-slate-700'
+                  }`}
+                >
+                  🔤 Título
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setSelectedElement('subtitles'); drawFrame(currentTime / totalClipsDuration); }}
+                  className={`px-2 py-1 rounded-lg text-[10px] font-bold transition ${
+                    selectedElement === 'subtitles'
+                      ? 'bg-yellow-600 text-white shadow'
+                      : 'bg-slate-700/60 text-slate-300 hover:bg-slate-700'
+                  }`}
+                >
+                  💬 Subs
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setSelectedElement('ticker'); drawFrame(currentTime / totalClipsDuration); }}
+                  className={`px-2 py-1 rounded-lg text-[10px] font-bold transition ${
+                    selectedElement === 'ticker'
+                      ? 'bg-red-600 text-white shadow'
+                      : 'bg-slate-700/60 text-slate-300 hover:bg-slate-700'
+                  }`}
+                >
+                  🔴 Cintillo
+                </button>
+                <button
+                  type="button"
+                  onClick={handleAddCustomTextOverlay}
+                  className="px-2 py-1 rounded-lg text-[10px] font-bold bg-emerald-600/30 text-emerald-300 hover:bg-emerald-600 hover:text-white transition flex items-center space-x-0.5"
+                  title="Añadir texto personalizado o badge"
+                >
+                  <Plus className="w-3 h-3" />
+                  <span>Texto</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleResetPositions}
+                  className="px-1.5 py-1 rounded-lg text-[10px] text-slate-400 hover:text-white hover:bg-slate-700 transition"
+                  title="Restablecer posiciones al centro"
+                >
+                  ↺ Centrar
+                </button>
+              </div>
+            </div>
+
+            {/* Lienzo Canvas con Interacción Táctil y Ratón (CapCut Style) */}
             <div className="relative w-full max-w-[260px] sm:max-w-[280px] aspect-[9/16] rounded-2xl overflow-hidden shadow-2xl border-2 border-slate-700 bg-black">
               <canvas
                 ref={canvasRef}
                 width={720}
                 height={1280}
-                className="w-full h-full object-contain"
+                onMouseDown={handleCanvasMouseDown}
+                onMouseMove={handleCanvasMouseMove}
+                onMouseUp={endElementDrag}
+                onMouseLeave={endElementDrag}
+                onTouchStart={handleCanvasTouchStart}
+                onTouchMove={handleCanvasTouchMove}
+                onTouchEnd={endElementDrag}
+                onWheel={handleCanvasWheel}
+                className="w-full h-full object-contain cursor-grab active:cursor-grabbing select-none"
               />
-
-              {/* Botón flotante Play */}
-              <button
-                onClick={handleTogglePlay}
-                disabled={isRecording}
-                className="absolute inset-0 flex items-center justify-center bg-black/25 hover:bg-black/35 transition opacity-0 hover:opacity-100 disabled:opacity-0"
-              >
-                <div className="w-14 h-14 rounded-full bg-white/95 text-slate-900 flex items-center justify-center shadow-2xl transform hover:scale-110 transition">
-                  {isPlaying ? (
-                    <Pause className="w-6 h-6 fill-current" />
-                  ) : (
-                    <Play className="w-6 h-6 fill-current ml-1" />
-                  )}
-                </div>
-              </button>
             </div>
 
             {/* Controles de reproducción */}
             <div className="flex items-center space-x-3 mt-3">
               <button
+                type="button"
                 onClick={handleTogglePlay}
                 disabled={isRecording}
                 className="flex items-center space-x-1.5 px-4 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold transition"
@@ -1685,6 +2199,7 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
               </button>
 
               <button
+                type="button"
                 onClick={() => {
                   stopPlayback();
                   setCurrentTime(0);
@@ -1698,120 +2213,324 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
               </button>
             </div>
 
-            {/* Controles de Tamaño y Encuadre en Canvas */}
-            {clips.length > 0 ? (
-              <div className="w-full max-w-[280px] bg-slate-800/80 p-3 rounded-2xl border border-slate-700/80 mt-3 space-y-2.5 text-xs shadow-lg">
-                <div className="flex items-center justify-between text-slate-200 font-bold text-xs pb-1 border-b border-slate-700/60">
-                  <span className="flex items-center space-x-1.5">
-                    <Maximize2 className="w-3.5 h-3.5 text-sky-400" />
-                    <span>Tamaño en Canvas ({clips[activeClipIndex]?.name || `Escena ${activeClipIndex + 1}`})</span>
-                  </span>
-                  <button
-                    onClick={handleToggleFitMode}
-                    className="text-[9px] px-2 py-0.5 rounded-lg bg-sky-600/30 text-sky-300 font-semibold hover:bg-sky-600/50 transition border border-sky-500/40"
-                    title="Alternar entre llenar pantalla vertical o ver imagen completa"
-                  >
-                    {clips[activeClipIndex]?.fitMode === 'contain' ? 'Foto Entera' : 'Llenar'}
-                  </button>
-                </div>
+            {/* PANEL INSPECTOR DEL ELEMENTO ACTIVO (CapCut) */}
 
-                {/* Slider de Zoom / Tamaño */}
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between text-[11px] text-slate-300">
-                    <span>Zoom / Tamaño:</span>
-                    <span className="font-mono text-sky-400 font-bold">
-                      {Math.round((clips[activeClipIndex]?.scale || 1.0) * 100)}%
+            {/* 1. Si está seleccionada la FOTO / IMAGEN */}
+            {selectedElement === 'image' && (
+              clips.length > 0 ? (
+                <div className="w-full max-w-[280px] bg-slate-800/80 p-3 rounded-2xl border border-sky-500/50 mt-3 space-y-2.5 text-xs shadow-lg animate-fade-in">
+                  <div className="flex items-center justify-between text-sky-300 font-bold text-xs pb-1 border-b border-slate-700/60">
+                    <span className="flex items-center space-x-1.5">
+                      <Maximize2 className="w-3.5 h-3.5 text-sky-400" />
+                      <span>{clips[activeClipIndex]?.name || `Escena ${activeClipIndex + 1}`}</span>
                     </span>
-                  </div>
-                  <div className="flex items-center space-x-2">
                     <button
-                      onClick={() => handleUpdateActiveClipScale(-0.1)}
-                      className="w-6 h-6 flex items-center justify-center rounded-lg bg-slate-700 hover:bg-slate-600 text-white font-bold text-xs"
-                      title="Hacer más pequeña"
+                      type="button"
+                      onClick={handleToggleFitMode}
+                      className="text-[9px] px-2 py-0.5 rounded-lg bg-sky-600/30 text-sky-300 font-semibold hover:bg-sky-600/50 transition border border-sky-500/40"
+                      title="Alternar entre llenar pantalla vertical o ver imagen completa"
                     >
-                      -
+                      {clips[activeClipIndex]?.fitMode === 'contain' ? 'Foto Entera' : 'Llenar'}
                     </button>
+                  </div>
+
+                  {/* Slider de Zoom / Tamaño */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between text-[11px] text-slate-300">
+                      <span>Zoom / Tamaño:</span>
+                      <span className="font-mono text-sky-400 font-bold">
+                        {Math.round((clips[activeClipIndex]?.scale || 1.0) * 100)}%
+                      </span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <button
+                        type="button"
+                        onClick={() => handleUpdateActiveClipScale(-0.1)}
+                        className="w-6 h-6 flex items-center justify-center rounded-lg bg-slate-700 hover:bg-slate-600 text-white font-bold text-xs"
+                        title="Hacer más pequeña"
+                      >
+                        -
+                      </button>
+                      <input
+                        type="range"
+                        min="0.5"
+                        max="2.2"
+                        step="0.05"
+                        value={clips[activeClipIndex]?.scale || 1.0}
+                        onChange={(e) => handleSetActiveClipScaleExact(parseFloat(e.target.value))}
+                        className="w-full accent-sky-400 cursor-pointer"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleUpdateActiveClipScale(0.1)}
+                        className="w-6 h-6 flex items-center justify-center rounded-lg bg-slate-700 hover:bg-slate-600 text-white font-bold text-xs"
+                        title="Hacer más grande"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Slider de Posición Vertical (Subir / Bajar cara) */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between text-[11px] text-slate-300">
+                      <span>Subir / Bajar foto:</span>
+                      <span className="font-mono text-amber-400 font-bold">
+                        {clips[activeClipIndex]?.offsetY || 0}px
+                      </span>
+                    </div>
                     <input
                       type="range"
-                      min="0.5"
-                      max="2.2"
-                      step="0.05"
-                      value={clips[activeClipIndex]?.scale || 1.0}
-                      onChange={(e) => handleSetActiveClipScaleExact(parseFloat(e.target.value))}
-                      className="w-full accent-sky-400 cursor-pointer"
+                      min="-160"
+                      max="160"
+                      step="5"
+                      value={clips[activeClipIndex]?.offsetY || 0}
+                      onChange={(e) => handleUpdateActiveClipOffsetY(parseInt(e.target.value))}
+                      className="w-full accent-amber-400 cursor-pointer"
                     />
-                    <button
-                      onClick={() => handleUpdateActiveClipScale(0.1)}
-                      className="w-6 h-6 flex items-center justify-center rounded-lg bg-slate-700 hover:bg-slate-600 text-white font-bold text-xs"
-                      title="Hacer más grande"
+                  </div>
+
+                  {/* Selector de Efecto de Movimiento / Animación */}
+                  <div className="space-y-1.5 pt-2 border-t border-slate-700/60">
+                    <div className="flex items-center justify-between text-[11px] text-slate-300">
+                      <span className="flex items-center space-x-1 font-semibold">
+                        <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Efecto de Movimiento:</span>
+                      </span>
+                      {clips.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => handleApplyTransitionToAll(clips[activeClipIndex]?.transition || 'zoom_in')}
+                          className="text-[10px] text-sky-400 hover:text-sky-300 underline font-medium cursor-pointer"
+                          title="Aplicar este mismo efecto de cámara a todas las escenas"
+                        >
+                          A todas
+                        </button>
+                      )}
+                    </div>
+                    <select
+                      value={clips[activeClipIndex]?.transition || 'zoom_in'}
+                      onChange={(e) => handleChangeTransition(e.target.value as any)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-sky-500 font-medium"
                     >
-                      +
+                      {IMAGE_EFFECTS.map((eff) => (
+                        <option key={eff.id} value={eff.id}>
+                          {eff.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              ) : (
+                <div className="w-full max-w-[280px] bg-slate-800/80 p-3 rounded-2xl border border-slate-700/80 mt-3 space-y-2 text-xs shadow-lg text-center animate-fade-in">
+                  <div className="text-slate-300 font-bold">📺 Modo Noticia Pura</div>
+                  <div className="text-[10px] text-slate-400">Sin imágenes de fondo. El video transmite la noticia completa con locución y gráficos de TV.</div>
+                  <button
+                    type="button"
+                    onClick={() => handleAddClip()}
+                    className="px-3 py-1 bg-sky-600 hover:bg-sky-500 text-white rounded-lg text-xs font-semibold shadow"
+                  >
+                    + Añadir Foto
+                  </button>
+                </div>
+              )
+            )}
+
+            {/* 2. Si está seleccionado el TITULAR */}
+            {selectedElement === 'title' && (
+              <div className="w-full max-w-[280px] bg-slate-800/90 p-3 rounded-2xl border border-amber-500/50 mt-3 space-y-2.5 text-xs shadow-lg animate-fade-in">
+                <div className="flex items-center justify-between text-amber-300 font-bold text-xs pb-1 border-b border-slate-700/60">
+                  <span className="flex items-center space-x-1">
+                    <Edit3 className="w-3.5 h-3.5 text-amber-400" />
+                    <span>🔤 Editar Titular</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => { setTitlePos({ x: 40, y: 720 }); drawFrame(currentTime / totalClipsDuration); }}
+                    className="text-[9px] px-2 py-0.5 rounded-lg bg-amber-600/30 text-amber-300 hover:bg-amber-600 hover:text-white"
+                  >
+                    Centrar
+                  </button>
+                </div>
+                <div>
+                  <label className="text-[10px] text-slate-400 font-medium block mb-1">Texto en Pantalla:</label>
+                  <textarea
+                    rows={3}
+                    value={customTitle}
+                    onChange={(e) => {
+                      setCustomTitle(e.target.value);
+                      drawFrame(currentTime / totalClipsDuration);
+                    }}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-amber-500"
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCustomTitle(draft?.title || '');
+                      drawFrame(currentTime / totalClipsDuration);
+                    }}
+                    className="text-[10px] text-sky-400 hover:text-sky-300 underline"
+                  >
+                    Restablecer original
+                  </button>
+                  <span className="text-[9px] text-slate-400">Arrastra en pantalla</span>
+                </div>
+              </div>
+            )}
+
+            {/* 3. Si están seleccionados los SUBTÍTULOS */}
+            {selectedElement === 'subtitles' && (
+              <div className="w-full max-w-[280px] bg-slate-800/90 p-3 rounded-2xl border border-yellow-500/50 mt-3 space-y-2.5 text-xs shadow-lg animate-fade-in">
+                <div className="flex items-center justify-between text-yellow-300 font-bold text-xs pb-1 border-b border-slate-700/60">
+                  <span>💬 Subtítulos de Locución</span>
+                  <button
+                    type="button"
+                    onClick={() => { setSubtitlesPos({ x: 360, y: 940 }); drawFrame(currentTime / totalClipsDuration); }}
+                    className="text-[9px] px-2 py-0.5 rounded-lg bg-yellow-600/30 text-yellow-300 hover:bg-yellow-600 hover:text-white"
+                  >
+                    Centrar
+                  </button>
+                </div>
+                <div className="space-y-1">
+                  <div className="text-[10px] text-slate-400">Posición rápida:</div>
+                  <div className="grid grid-cols-3 gap-1">
+                    <button
+                      type="button"
+                      onClick={() => { setSubtitlesPos({ x: 360, y: 350 }); drawFrame(currentTime / totalClipsDuration); }}
+                      className="px-2 py-1 rounded bg-slate-700 text-slate-300 hover:bg-slate-600 text-[10px]"
+                    >
+                      Arriba
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setSubtitlesPos({ x: 360, y: 640 }); drawFrame(currentTime / totalClipsDuration); }}
+                      className="px-2 py-1 rounded bg-slate-700 text-slate-300 hover:bg-slate-600 text-[10px]"
+                    >
+                      Centro
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setSubtitlesPos({ x: 360, y: 940 }); drawFrame(currentTime / totalClipsDuration); }}
+                      className="px-2 py-1 rounded bg-slate-700 text-slate-300 hover:bg-slate-600 text-[10px]"
+                    >
+                      Abajo
                     </button>
                   </div>
                 </div>
-
-                {/* Slider de Posición Vertical (Subir / Bajar cara) */}
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between text-[11px] text-slate-300">
-                    <span>Subir / Bajar foto:</span>
-                    <span className="font-mono text-amber-400 font-bold">
-                      {clips[activeClipIndex]?.offsetY || 0}px
-                    </span>
-                  </div>
-                  <input
-                    type="range"
-                    min="-160"
-                    max="160"
-                    step="5"
-                    value={clips[activeClipIndex]?.offsetY || 0}
-                    onChange={(e) => handleUpdateActiveClipOffsetY(parseInt(e.target.value))}
-                    className="w-full accent-amber-400 cursor-pointer"
-                  />
-                </div>
-
-                {/* Selector de Efecto de Movimiento / Animación */}
-                <div className="space-y-1.5 pt-2 border-t border-slate-700/60">
-                  <div className="flex items-center justify-between text-[11px] text-slate-300">
-                    <span className="flex items-center space-x-1 font-semibold">
-                      <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                      <span>Efecto de Movimiento:</span>
-                    </span>
-                    {clips.length > 1 && (
-                      <button
-                        onClick={() => handleApplyTransitionToAll(clips[activeClipIndex]?.transition || 'zoom_in')}
-                        className="text-[10px] text-sky-400 hover:text-sky-300 underline font-medium cursor-pointer"
-                        title="Aplicar este mismo efecto de cámara a todas las escenas"
-                      >
-                        A todas las escenas
-                      </button>
-                    )}
-                  </div>
-                  <select
-                    value={clips[activeClipIndex]?.transition || 'zoom_in'}
-                    onChange={(e) => handleChangeTransition(e.target.value as any)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-sky-500 font-medium"
-                  >
-                    {IMAGE_EFFECTS.map((eff) => (
-                      <option key={eff.id} value={eff.id}>
-                        {eff.label}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="text-[10px] text-slate-400 italic">
-                    {IMAGE_EFFECTS.find((e) => e.id === (clips[activeClipIndex]?.transition || 'zoom_in'))?.desc}
-                  </p>
+                <div className="text-[10px] text-slate-400 italic">
+                  💡 Tip: Puedes moverlos con el cursor a cualquier posición de la pantalla.
                 </div>
               </div>
-            ) : (
-              <div className="w-full max-w-[280px] bg-slate-800/80 p-3 rounded-2xl border border-slate-700/80 mt-3 space-y-2 text-xs shadow-lg text-center">
-                <div className="text-slate-300 font-bold">📺 Modo Noticia Pura</div>
-                <div className="text-[10px] text-slate-400">Sin imágenes de fondo. El video transmite la noticia completa con locución y gráficos de TV.</div>
-                <button
-                  onClick={() => handleAddClip()}
-                  className="px-3 py-1 bg-sky-600 hover:bg-sky-500 text-white rounded-lg text-xs font-semibold shadow"
-                >
-                  + Añadir Foto
-                </button>
+            )}
+
+            {/* 4. Si está seleccionado el CINTILLO INFERIOR ROJO */}
+            {selectedElement === 'ticker' && (
+              <div className="w-full max-w-[280px] bg-slate-800/90 p-3 rounded-2xl border border-red-500/50 mt-3 space-y-2.5 text-xs shadow-lg animate-fade-in">
+                <div className="flex items-center justify-between text-red-300 font-bold text-xs pb-1 border-b border-slate-700/60">
+                  <span>🔴 Cintillo Inferior Rojo</span>
+                  <label className="flex items-center space-x-1.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={showTicker}
+                      onChange={(e) => {
+                        setShowTicker(e.target.checked);
+                        drawFrame(currentTime / totalClipsDuration);
+                      }}
+                      className="accent-red-600 rounded"
+                    />
+                    <span className="text-[10px] text-slate-300 font-normal">Mostrar</span>
+                  </label>
+                </div>
+                <div>
+                  <label className="text-[10px] text-slate-400 font-medium block mb-1">Texto en la franja roja:</label>
+                  <textarea
+                    rows={2}
+                    value={tickerText}
+                    onChange={(e) => {
+                      setTickerText(e.target.value);
+                      drawFrame(currentTime / totalClipsDuration);
+                    }}
+                    placeholder="CONFIRMADA • NOTICIA DE ÚLTIMA HORA • COMPARTE ESTE VIDEO..."
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-red-500"
+                  />
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTickerText('🔴 CONFIRMADA • NOTICIA DE ÚLTIMA HORA • COMPARTE ESTE VIDEO');
+                      drawFrame(currentTime / totalClipsDuration);
+                    }}
+                    className="text-[9px] px-2 py-0.5 rounded bg-slate-700 hover:bg-slate-600 text-slate-300"
+                  >
+                    Última Hora
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTickerText(`CONFIRMADA • FUENTE: ${draft?.sourceAttribution || 'Noticias'} • COMPARTE ESTE VIDEO`);
+                      drawFrame(currentTime / totalClipsDuration);
+                    }}
+                    className="text-[9px] px-2 py-0.5 rounded bg-slate-700 hover:bg-slate-600 text-slate-300"
+                  >
+                    Con Fuente
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* 5. Si está seleccionado un OVERLAY PERSONALIZADO */}
+            {selectedElement && selectedElement.startsWith('ov_') && (
+              <div className="w-full max-w-[280px] bg-slate-800/90 p-3 rounded-2xl border border-emerald-500/50 mt-3 space-y-2.5 text-xs shadow-lg animate-fade-in">
+                <div className="flex items-center justify-between text-emerald-300 font-bold text-xs pb-1 border-b border-slate-700/60">
+                  <span>✨ Texto / Sticker</span>
+                  <button
+                    type="button"
+                    onClick={handleDeleteSelectedElement}
+                    className="text-[9px] px-2 py-0.5 rounded-lg bg-red-600/30 text-red-300 hover:bg-red-600 hover:text-white"
+                  >
+                    Eliminar
+                  </button>
+                </div>
+                {(() => {
+                  const currentOv = overlays.find((o) => o.id === selectedElement);
+                  if (!currentOv) return null;
+                  return (
+                    <div className="space-y-2">
+                      <input
+                        type="text"
+                        value={currentOv.text}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setOverlays((prev) =>
+                            prev.map((o) => (o.id === selectedElement ? { ...o, text: val } : o))
+                          );
+                          drawFrame(currentTime / totalClipsDuration);
+                        }}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2 text-xs text-white"
+                      />
+                      <div className="flex items-center space-x-1.5">
+                        <span className="text-[10px] text-slate-400">Color:</span>
+                        {['#ffffff', '#facc15', '#ef4444', '#38bdf8', '#22c55e'].map((col) => (
+                          <button
+                            type="button"
+                            key={col}
+                            onClick={() => {
+                              setOverlays((prev) =>
+                                prev.map((o) => (o.id === selectedElement ? { ...o, color: col } : o))
+                              );
+                              drawFrame(currentTime / totalClipsDuration);
+                            }}
+                            className="w-5 h-5 rounded-full border border-slate-600 hover:scale-110 transition"
+                            style={{ backgroundColor: col }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             )}
           </div>
@@ -2323,6 +3042,77 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
                     </div>
                   ))}
                 </div>
+              </div>
+            </div>
+
+            {/* Edición Rápida de Cintillo Inferior y Titular (Editables) */}
+            <div className="bg-slate-800/60 p-3 rounded-2xl border border-slate-700/60 space-y-2.5">
+              <label className="text-xs font-bold text-slate-200 flex items-center justify-between">
+                <span className="flex items-center space-x-1.5">
+                  <Type className="w-4 h-4 text-red-400" />
+                  <span>Cintillo Rojo Inferior y Titular (100% Editables)</span>
+                </span>
+                <span className="text-[10px] text-red-400 font-semibold">
+                  Personaliza los textos que se ven en el video
+                </span>
+              </label>
+
+              {/* Cintillo Rojo */}
+              <div className="space-y-1">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="text-slate-300 font-medium flex items-center space-x-1.5">
+                    <span className="w-2 h-2 rounded-full bg-red-500 inline-block"></span>
+                    <span>Cintillo Rojo Inferior:</span>
+                  </span>
+                  <label className="flex items-center space-x-1.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={showTicker}
+                      onChange={(e) => {
+                        setShowTicker(e.target.checked);
+                        drawFrame(currentTime / totalClipsDuration);
+                      }}
+                      className="accent-red-600 rounded"
+                    />
+                    <span className="text-[10px] text-slate-300 font-normal">Mostrar en el video</span>
+                  </label>
+                </div>
+                <input
+                  type="text"
+                  value={tickerText}
+                  onChange={(e) => {
+                    setTickerText(e.target.value);
+                    drawFrame(currentTime / totalClipsDuration);
+                  }}
+                  placeholder="CONFIRMADA • NOTICIA DE ÚLTIMA HORA • COMPARTE ESTE VIDEO..."
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-red-500"
+                />
+              </div>
+
+              {/* Titular Editable */}
+              <div className="space-y-1">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="text-slate-300 font-medium">Titular en Pantalla:</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCustomTitle(draft?.title || '');
+                      drawFrame(currentTime / totalClipsDuration);
+                    }}
+                    className="text-[10px] text-sky-400 hover:text-sky-300 underline"
+                  >
+                    Restablecer original
+                  </button>
+                </div>
+                <input
+                  type="text"
+                  value={customTitle}
+                  onChange={(e) => {
+                    setCustomTitle(e.target.value);
+                    drawFrame(currentTime / totalClipsDuration);
+                  }}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
+                />
               </div>
             </div>
 

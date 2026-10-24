@@ -1,10 +1,18 @@
-import { Controller, Get, Query, Res, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Body, Query, Res, HttpStatus, BadRequestException } from '@nestjs/common';
 import { Response } from 'express';
 import { MediaService } from './media.service';
 
 @Controller('media')
 export class MediaController {
   constructor(private readonly mediaService: MediaService) {}
+
+  @Post('fix-video')
+  async fixVideo(@Body() body: { videoBase64: string }) {
+    if (!body?.videoBase64) {
+      throw new BadRequestException('videoBase64 es requerido');
+    }
+    return this.mediaService.fixVideo(body.videoBase64);
+  }
 
   @Get('tts')
   async getTTS(
