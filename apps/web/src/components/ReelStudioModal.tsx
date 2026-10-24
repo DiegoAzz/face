@@ -327,7 +327,7 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
   const [customBody, setCustomBody] = useState<string>(cleanNewsForNarration(body || draft?.body || ''));
 
   // Cintillo Inferior Rojo editable por el usuario
-  const defaultTicker = `🎙️ CÓDIGO VIRAL PODCAST • REDES · APPS · DINERO · VIDA • SÍGUENOS EN @CodigoViralOficial14 • `;
+  const defaultTicker = `🚨 ÚLTIMA HORA • NOTICIAS AL INSTANTE • SÍGUEME PARA MÁS • COMPARTE ESTE VIDEO • `;
   const [tickerText, setTickerText] = useState<string>(defaultTicker);
   const [showTicker, setShowTicker] = useState<boolean>(true);
 
@@ -645,7 +645,7 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
       '¿Ustedes ya se enteraron de lo que acaba de pasar? Escuchen bien esta noticia:',
     ];
     const randomHook = podcastHooks[Math.floor(Math.random() * podcastHooks.length)];
-    const cta = '¿Ustedes qué opinan de todo esto? Déjenmelo saber en los comentarios y suscríbanse a Código Viral para no perderse ninguna noticia al instante.';
+    const cta = '¿Ustedes qué opinan de todo esto? Déjenmelo saber en los comentarios y síganme para más noticias al instante.';
 
     const podcastBody = `${randomHook} ${clean}. ${cta}`;
     setCustomBody(podcastBody);
@@ -726,7 +726,7 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
       // Si es YouTube Shorts, activamos Código Viral
       setBrandMode('codigo_viral');
       setIsPodcastMode(true);
-      setTickerText('🎙️ CÓDIGO VIRAL PODCAST • REDES · APPS · DINERO · VIDA • SÍGUENOS EN @CodigoViralOficial14 • ');
+      setTickerText('🚨 ÚLTIMA HORA • NOTICIAS AL INSTANTE • SÍGUEME PARA MÁS • COMPARTE ESTE VIDEO • ');
     }
     const newTarget = mode === 'youtube_15' ? 14 : mode === 'reels_30' ? 30 : 55;
     setClips((prev) => {
@@ -1906,9 +1906,7 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
       rawSubtitle = (subtitleChunks[activeSubtitleIndex] || '').toUpperCase();
     } else {
       // Cuando el narrador concluye: llamado a la acción viral (CTA) de alto impacto
-      rawSubtitle = brandMode === 'diegoaz_facebook'
-        ? '🚨 SÍGUENOS EN DIEGOAZ • COMPARTE'
-        : '🚨 SÍGUENOS EN CÓDIGO VIRAL';
+      rawSubtitle = '🚨 SÍGUEME PARA MÁS • COMPARTE';
       isCtaPhase = true;
     }
 
@@ -2437,7 +2435,7 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
     // Copiar titular viral optimizado y hashtags al portapapeles de inmediato en el gesto de usuario
     const finalHeadline = (customTitle || cleanPureTitle).trim();
     const shortTitle = finalHeadline.slice(0, 65).trim();
-    const fullCopy = `${shortTitle} #Shorts #CodigoViral\n\n${customBody || cleanPureBody}\n\n🎙️ CÓDIGO VIRAL | Redes · Apps · Dinero · Vida\n🚨 Síguenos en @CodigoViralOficial14 para más análisis y noticias al instante.\n\n#CodigoViral #Shorts #PodcastViral #Noticias #Colombia #Tendencias`;
+    const fullCopy = `${shortTitle} #Shorts #Noticias\n\n${customBody || cleanPureBody}\n\n🚨 Sígueme para más noticias e información todos los días. ¡Comparte este video!\n\n#Shorts #Noticias #Colombia #Viral #Tendencias`;
     try {
       await navigator.clipboard.writeText(fullCopy);
     } catch {}
@@ -3128,7 +3126,7 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
                   onClick={() => {
                     setBrandMode('codigo_viral');
                     setIsPodcastMode(true);
-                    setTickerText('🎙️ CÓDIGO VIRAL PODCAST • REDES · APPS · DINERO · VIDA • SÍGUENOS EN @CodigoViralOficial14 • ');
+                    setTickerText('🚨 ÚLTIMA HORA • NOTICIAS AL INSTANTE • SÍGUEME PARA MÁS • COMPARTE ESTE VIDEO • ');
                     setTimeout(() => drawFrame(currentTime / totalClipsDuration), 50);
                   }}
                   className={`p-2.5 rounded-xl border text-left transition flex items-center space-x-2 ${
