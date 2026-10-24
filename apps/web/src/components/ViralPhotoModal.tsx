@@ -18,7 +18,7 @@ import {
   Eye,
   Check,
 } from 'lucide-react';
-import api from '../services/api';
+import api from '../api/client';
 
 interface ViralPhotoModalProps {
   draft: any;
