@@ -561,9 +561,10 @@ export class YouTubeService {
     // 2. Subir los bytes del video a YouTube con cabeceras estrictas del protocolo Resumable Upload
     let uploadRes: any;
     try {
+      // NOTA OFICIAL GOOGLE: En la petición PUT a la URL de subida resumible (uploadUrl), NO se debe enviar
+      // la cabecera Authorization porque la propia upload_id autentica la sesión.
       uploadRes = await axios.put(uploadUrl, videoBuffer, {
         headers: {
-          Authorization: `Bearer ${accessToken}`,
           'Content-Type': mimeType,
           'Content-Length': videoBuffer.length,
           'Content-Range': `bytes 0-${videoBuffer.length - 1}/${videoBuffer.length}`,

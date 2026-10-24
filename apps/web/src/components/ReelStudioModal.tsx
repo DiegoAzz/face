@@ -2207,32 +2207,39 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
     });
   };
 
-  // 1. Subir a YouTube Shorts (Asistido 1-Clic con protección contra bloqueo de popups)
-  const handlePublishYouTubeShorts = async () => {
-    let blob = exportedBlob;
+  // 1. Subir a YouTube Shorts (Asistido 1-Clic con protección total contra bloqueo de popups)
+  const handleOpenYouTubeStudio = async () => {
+    // Abrir ventana INMEDIATAMENTE en el hilo síncrono del click para que Chrome/Edge NUNCA bloquee el popup
     let ytWindow: Window | null = null;
+    try {
+      ytWindow = window.open('https://studio.youtube.com/channel/videos/upload?d=ud', '_blank');
+    } catch (e) {
+      console.warn('Popup bloqueado:', e);
+    }
+
+    // Copiar titular viral optimizado y hashtags al portapapeles de inmediato en el gesto de usuario
+    const finalHeadline = (customTitle || cleanPureTitle).trim();
+    const shortTitle = finalHeadline.slice(0, 65).trim();
+    const fullCopy = `${shortTitle} #Shorts #Noticias\n\n${customBody || cleanPureBody}\n\n#Shorts #Noticias #Colombia #Viral`;
+    try {
+      await navigator.clipboard.writeText(fullCopy);
+    } catch {}
+
+    // Si aún no está renderizado el video, renderizarlo y descargarlo en la PC del usuario
+    let blob = exportedBlob;
     if (!blob) {
-      // Abrir ventana en el evento click para evitar bloqueo de popups del navegador durante el renderizado
-      ytWindow = window.open('https://www.youtube.com/upload', '_blank');
-      setPublishNotice('⏳ Renderizando y descargando el video en tu PC primero...');
+      setPublishNotice('⏳ Preparando y descargando Short MP4 optimizado... En la pestaña de YouTube Studio que se acaba de abrir, arrastra el video cuando termine la descarga.');
       blob = await handleExportVideo();
       if (!blob) {
         if (ytWindow) ytWindow.close();
         return;
       }
-    } else {
-      window.open('https://www.youtube.com/upload', '_blank');
     }
-    const finalHeadline = (customTitle || cleanPureTitle).trim();
-    const shortTitle = finalHeadline.slice(0, 65).trim();
-    const ytTitle = `${shortTitle} #Shorts #Noticias`;
-    const ytDesc = `${finalHeadline}\n\n${customBody || cleanPureBody}\n\n🚨 Noticias de última hora. Síguenos para más información.\n\n#Shorts #Noticias #Colombia #Viral`;
-    try {
-      await navigator.clipboard.writeText(`${ytTitle}\n\n${ytDesc}`);
-    } catch {}
 
-    setPublishNotice('✓ ¡Video descargado en Descargas! En la pantalla de YouTube que se abrió, arrastra el archivo y pulsa Ctrl+V.');
+    setPublishNotice('🎉 ¡Short MP4 descargado y título copiado! En la pestaña de YouTube Studio abierta: 1) Arrastra el archivo descargado. 2) Pulsa Ctrl+V en el título. ¡Listo!');
   };
+
+  const handlePublishYouTubeShorts = handleOpenYouTubeStudio;
 
   // 2. Publicar directamente a Página de Facebook conectada (Vía Meta Graph API 100% Automático)
   const handlePublishToFacebookPage = async () => {
@@ -2275,23 +2282,7 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
     }
   };
 
-  // 2a. Subida directa y 100% monetizable abriendo YouTube Studio (Sin bloqueos de API ni auditorías de Google)
-  const handleOpenYouTubeStudio = async () => {
-    let blob = exportedBlob;
-    if (!blob) {
-      setPublishNotice('⏳ Renderizando y preparando el Short MP4 optimizado...');
-      blob = await handleExportVideo();
-      if (!blob) return;
-    }
-    const finalHeadline = (customTitle || cleanPureTitle).trim();
-    const shortTitle = finalHeadline.slice(0, 65).trim();
-    const fullCopy = `${shortTitle} #Shorts #Noticias\n\n${customBody || cleanPureBody}\n\n#Shorts #Noticias #Colombia`;
-    try {
-      await navigator.clipboard.writeText(fullCopy);
-    } catch {}
-    setPublishNotice('✓ ¡Short MP4 descargado y texto copiado! En la pestaña de YouTube Studio que se abrió, arrastra el archivo y pulsa Ctrl+V.');
-    window.open('https://studio.youtube.com/channel/videos/upload?d=ud', '_blank');
-  };
+// 2a. Subida delegada a handleOpenYouTubeStudio (ver arriba)
 
   // 2b. Publicar directamente a YouTube Shorts (100% Automático vía YouTube Data API v3 con JWT)
   const handlePublishToYouTubeDirect = async () => {
@@ -2338,20 +2329,28 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
     }
   };
 
-  // 3. Abrir Creador de Reels de Facebook (Para Perfil Personal)
+  // 3. Abrir Creador de Reels de Facebook (Para Perfil Personal con protección de popups)
   const handleOpenFacebookReelsPersonal = async () => {
-    let blob = exportedBlob;
-    if (!blob) {
-      setPublishNotice('⏳ Renderizando y descargando el video MP4 en tu PC primero...');
-      blob = await handleExportVideo();
-      if (!blob) return;
-    }
+    let fbWindow: Window | null = null;
+    try {
+      fbWindow = window.open('https://www.facebook.com/reels/create', '_blank');
+    } catch {}
+
     const finalHeadline = (customTitle || cleanPureTitle).trim();
     try {
       await navigator.clipboard.writeText(`${finalHeadline}\n\n${customBody || cleanPureBody}\n\n#Noticias #Reels`);
     } catch {}
-    setPublishNotice('✓ ¡Video descargado en Descargas! En la pantalla de Facebook que se abrió, arrastra el video recién descargado y pulsa Ctrl+V.');
-    window.open('https://www.facebook.com/reels/create', '_blank');
+
+    let blob = exportedBlob;
+    if (!blob) {
+      setPublishNotice('⏳ Renderizando y descargando el Reel MP4 en tu PC primero... En la ventana de Facebook Reels que se acaba de abrir, arrastra el video al terminar la descarga.');
+      blob = await handleExportVideo();
+      if (!blob) {
+        if (fbWindow) fbWindow.close();
+        return;
+      }
+    }
+    setPublishNotice('✓ ¡Video descargado en Descargas! En la pantalla de Facebook Reels abierta, arrastra el video recién descargado y pulsa Ctrl+V.');
   };
 
   // 4. Compartir nativo en apps del dispositivo
@@ -3729,10 +3728,10 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
                         <button
                           type="button"
                           onClick={handleOpenYouTubeStudio}
-                          className="w-full sm:w-auto px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-white border border-red-500/50 rounded-xl text-xs font-bold transition flex items-center justify-center space-x-1.5 shadow"
+                          className="w-full sm:w-auto px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-xl text-xs font-bold transition flex items-center justify-center space-x-1.5 shadow-md"
                           title="Descarga el video MP4 listo y abre YouTube Studio con el título copiado para monetizar 100%"
                         >
-                          <ExternalLink className="w-3.5 h-3.5 text-red-400" />
+                          <ExternalLink className="w-3.5 h-3.5" />
                           <span>Subir en Studio (1 Clic)</span>
                         </button>
 
@@ -3740,18 +3739,18 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
                           type="button"
                           onClick={handlePublishToYouTubeDirect}
                           disabled={isPublishingToYt}
-                          className="w-full sm:w-auto px-3.5 py-2 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition flex items-center justify-center space-x-1.5 shadow-md flex-shrink-0"
-                          title="Sube automáticamente a tu canal como Privado para que YouTube lo procese"
+                          className="w-full sm:w-auto px-3 py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-300 border border-red-500/30 rounded-xl text-xs font-medium transition flex items-center justify-center space-x-1.5 shadow"
+                          title="Sube automáticamente a tu canal como Privado vía API"
                         >
                           {isPublishingToYt ? (
                             <>
                               <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                              <span>Subiendo...</span>
+                              <span>Subiendo API...</span>
                             </>
                           ) : (
                             <>
-                              <Send className="w-3.5 h-3.5" />
-                              <span>Publicar API (Privado)</span>
+                              <Send className="w-3.5 h-3.5 text-red-400" />
+                              <span>Subir vía API</span>
                             </>
                           )}
                         </button>
