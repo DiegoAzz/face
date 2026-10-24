@@ -526,30 +526,21 @@ export class YouTubeService {
       );
     };
 
-    // 1. Iniciar sesión de subida resumible en YouTube (con fallback a 'unlisted' si Google rechaza público por falta de verificación del proyecto)
+    // 1. Iniciar sesión de subida resumible en YouTube
+    // POLÍTICA ESTRICTA DE GOOGLE (Desde Julio 2020): Proyectos OAuth sin auditoría empresarial formal
+    // solo pueden subir videos como "private". Si se sube como "public", Google acepta el archivo inicial
+    // pero su clúster de procesamiento cancela el video ("Procesamiento interrumpido: No se ha podido procesar").
+    // Por ello se sube como "private" para que se procese al 100% sin abortos, y el creador pueda cambiarlo a Público en Studio.
     let initRes: any;
     try {
-      initRes = await startUploadSession('public');
+      initRes = await startUploadSession('private');
     } catch (err: any) {
       const yMsg =
         (typeof err.response?.data === 'string' ? err.response.data : null) ||
         err.response?.data?.error?.message ||
         err.message ||
         '';
-      if (yMsg.includes('verification') || yMsg.includes('public') || yMsg.includes('uploadLimitExceeded') || err.response?.status === 400) {
-        console.warn('Reintentando subida a YouTube como "unlisted" por restricciones de cuenta/verificación de Google:', yMsg);
-        try {
-          initRes = await startUploadSession('unlisted');
-        } catch (innerErr: any) {
-          const innerMsg =
-            (typeof innerErr.response?.data === 'string' ? innerErr.response.data : null) ||
-            innerErr.response?.data?.error?.message ||
-            innerErr.message;
-          throw new BadRequestException(`Error iniciando subida a YouTube: ${innerMsg}`);
-        }
-      } else {
-        throw new BadRequestException(`Error iniciando subida a YouTube: ${yMsg}`);
-      }
+      throw new BadRequestException(`Error iniciando subida a YouTube: ${yMsg}`);
     }
 
     const uploadUrl = initRes.headers?.location || initRes.headers?.Location;

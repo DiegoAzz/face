@@ -2123,6 +2123,22 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
     }
   };
 
+  // 2a. Subida directa y 100% monetizable abriendo YouTube Studio (Sin bloqueos de API ni auditorías de Google)
+  const handleOpenYouTubeStudio = async () => {
+    let blob = exportedBlob;
+    if (!blob) {
+      setPublishNotice('⏳ Renderizando y preparando el Short MP4 optimizado...');
+      blob = await handleExportVideo();
+      if (!blob) return;
+    }
+    try {
+      const fullCopy = `${cleanPureTitle} #Shorts #Noticias #Tendencias\n\n${cleanPureBody}`;
+      await navigator.clipboard.writeText(fullCopy);
+    } catch {}
+    setPublishNotice('✓ ¡Short MP4 descargado y texto copiado! En la pestaña de YouTube Studio que se abrió, arrastra el archivo y pulsa Ctrl+V.');
+    window.open('https://studio.youtube.com/channel/videos/upload?d=ud', '_blank');
+  };
+
   // 2b. Publicar directamente a YouTube Shorts (100% Automático vía YouTube Data API v3 con JWT)
   const handlePublishToYouTubeDirect = async () => {
     const channelIdToUse = selectedYtChannelId || youtubeChannels[0]?.id;
@@ -2153,7 +2169,7 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
       });
 
       if (res.data?.success) {
-        setPublishNotice(`🎉 ¡Short publicado 100% automático en YouTube ("${res.data.channelTitle}")! Enlace: ${res.data.url}`);
+        setPublishNotice(`🎉 ¡Short subido con éxito a YouTube ("${res.data.channelTitle}")! Estado: Privado (por políticas de Google API). Puedes cambiarlo a Público en YouTube Studio: ${res.data.url}`);
       } else {
         alert('Error de YouTube: ' + (res.data?.message || 'Error publicando Short'));
       }
@@ -3399,13 +3415,13 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
                   </span>
                 </div>
 
-                {/* Subida Directa a Canal de YouTube Conectado (100% Automático) */}
+                {/* Subida Directa a Canal de YouTube Conectado */}
                 {youtubeChannels.length > 0 && (
                   <div className="p-2.5 rounded-xl bg-red-950/40 border border-red-500/40 space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold text-red-400 flex items-center space-x-1.5">
                         <CheckCircle2 className="w-3.5 h-3.5 text-red-400" />
-                        <span>100% Automático: Publicar a tu Canal de YouTube Shorts</span>
+                        <span>Publicar a tu Canal de YouTube Shorts</span>
                       </span>
                       <span className="text-[9px] px-1.5 py-0.5 bg-red-600/30 text-red-300 rounded font-semibold">
                         Vía YouTube Data API v3
@@ -3427,42 +3443,66 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
                         </select>
                       </div>
 
-                      <button
-                        onClick={handlePublishToYouTubeDirect}
-                        disabled={isPublishingToYt}
-                        className="w-full sm:w-auto px-4 py-2 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition flex items-center justify-center space-x-1.5 shadow-md flex-shrink-0"
-                      >
-                        {isPublishingToYt ? (
-                          <>
-                            <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                            <span>Subiendo automáticamente a YouTube...</span>
-                          </>
-                        ) : (
-                          <>
-                            <Send className="w-3.5 h-3.5" />
-                            <span>Publicar Short Automático</span>
-                          </>
-                        )}
-                      </button>
+                      <div className="flex items-center gap-1.5 w-full sm:w-auto">
+                        <button
+                          type="button"
+                          onClick={handleOpenYouTubeStudio}
+                          className="w-full sm:w-auto px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-white border border-red-500/50 rounded-xl text-xs font-bold transition flex items-center justify-center space-x-1.5 shadow"
+                          title="Descarga el video MP4 listo y abre YouTube Studio con el título copiado para monetizar 100%"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5 text-red-400" />
+                          <span>Subir en Studio (1 Clic)</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={handlePublishToYouTubeDirect}
+                          disabled={isPublishingToYt}
+                          className="w-full sm:w-auto px-3.5 py-2 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition flex items-center justify-center space-x-1.5 shadow-md flex-shrink-0"
+                          title="Sube automáticamente a tu canal como Privado para que YouTube lo procese"
+                        >
+                          {isPublishingToYt ? (
+                            <>
+                              <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                              <span>Subiendo...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Send className="w-3.5 h-3.5" />
+                              <span>Publicar API (Privado)</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )}
 
                 {youtubeChannels.length === 0 && (
-                  <div className="pt-1 border-t border-slate-700/60 p-2.5 rounded-xl bg-slate-900/80 border border-slate-800 text-[11px] text-slate-300 flex items-center justify-between">
+                  <div className="pt-1 border-t border-slate-700/60 p-2.5 rounded-xl bg-slate-900/80 border border-slate-800 text-[11px] text-slate-300 flex flex-col sm:flex-row items-center justify-between gap-2">
                     <div className="space-y-0.5">
-                      <span className="font-bold text-red-400 block">¿Quieres publicación 100% automática a YouTube Shorts?</span>
+                      <span className="font-bold text-red-400 block">Subir Short a YouTube</span>
                       <span className="text-[10px] text-slate-400">
-                        Vincula tu canal en "Cuentas / Páginas" con Google OAuth para subir Shorts en segundo plano sin pasar por YouTube Studio.
+                        Sube tu video directo a YouTube Studio con 1 clic (monetización activa) o vincula tu canal en "Cuentas / Páginas".
                       </span>
                     </div>
-                    <a
-                      href="/pages"
-                      target="_blank"
-                      className="ml-2 px-2.5 py-1 bg-red-600 hover:bg-red-500 text-white rounded-lg text-xs font-semibold whitespace-nowrap shadow"
-                    >
-                      Conectar Canal
-                    </a>
+                    <div className="flex items-center space-x-2">
+                      <button
+                        type="button"
+                        onClick={handleOpenYouTubeStudio}
+                        className="px-2.5 py-1 bg-red-600 hover:bg-red-500 text-white rounded-lg text-xs font-semibold whitespace-nowrap shadow flex items-center space-x-1"
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                        <span>Subir en Studio</span>
+                      </button>
+                      <a
+                        href="/pages"
+                        target="_blank"
+                        className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium border border-slate-700"
+                      >
+                        Vincular API
+                      </a>
+                    </div>
                   </div>
                 )}
 
