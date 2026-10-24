@@ -351,7 +351,11 @@ export class YouTubeService {
       }
 
       ffmpegArgs.push(
+        '-map', '0:v:0',
+        '-map', hasAudio ? '0:a:0' : '1:a:0',
         '-c:v', 'libx264',
+        '-profile:v', 'main',
+        '-level:v', '4.0',
         '-pix_fmt', 'yuv420p',
         '-r', '30',
         '-g', '60',
@@ -392,7 +396,36 @@ export class YouTubeService {
         return { buffer: convertedBuffer, mimeType: 'video/mp4' };
       }
     } catch (err: any) {
-      console.warn('[YouTube Service] FFmpeg no disponible o falló conversión, usando buffer original:', err.message);
+      console.warn('[YouTube Service] FFmpeg error en transcode principal:', err.message);
+      // Intento de contingencia ultra seguro con audio generado
+      try {
+        const fallbackArgs = [
+          '-y',
+          '-i', inputPath,
+          '-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100',
+          '-map', '0:v:0',
+          '-map', '1:a:0',
+          '-c:v', 'libx264',
+          '-pix_fmt', 'yuv420p',
+          '-r', '30',
+          '-preset', 'ultrafast',
+          '-c:a', 'aac',
+          '-shortest',
+          '-movflags', '+faststart',
+          outputPath,
+        ];
+        await new Promise<void>((resolve, reject) => {
+          const proc = spawn('ffmpeg', fallbackArgs);
+          proc.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`Exit ${code}`))));
+          proc.on('error', reject);
+        });
+        const fallbackBuf = await fs.promises.readFile(outputPath);
+        if (fallbackBuf && fallbackBuf.length > 1000) {
+          return { buffer: fallbackBuf, mimeType: 'video/mp4' };
+        }
+      } catch (inner: any) {
+        console.warn('[YouTube Service] Plan de contingencia FFmpeg falló:', inner.message);
+      }
     } finally {
       try { await fs.promises.unlink(inputPath); } catch {}
       try { await fs.promises.unlink(outputPath); } catch {}
@@ -443,15 +476,25 @@ export class YouTubeService {
     const { buffer: videoBuffer, mimeType } = await this.transcodeToYouTubeMP4(rawBuffer);
 
     // Limpieza estricta del título según requisitos de YouTube Data API v3 (sin saltos de línea ni caracteres prohibidos < >)
-    let cleanTitle = (data.title || 'Short')
+    let cleanTitle = (data.title || 'Noticia')
       .replace(/[<>\r\n]/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
 
     if (!cleanTitle.toLowerCase().includes('#shorts')) {
-      cleanTitle = `${cleanTitle.slice(0, 90)} #Shorts`;
+      if (cleanTitle.length > 88) {
+        const truncated = cleanTitle.slice(0, 88);
+        const lastSpace = truncated.lastIndexOf(' ');
+        cleanTitle = `${(lastSpace > 40 ? truncated.slice(0, lastSpace) : truncated).trim()} #Shorts`;
+      } else {
+        cleanTitle = `${cleanTitle} #Shorts`;
+      }
     } else {
-      cleanTitle = cleanTitle.slice(0, 100);
+      if (cleanTitle.length > 100) {
+        const truncated = cleanTitle.slice(0, 100);
+        const lastSpace = truncated.lastIndexOf(' ');
+        cleanTitle = (lastSpace > 50 ? truncated.slice(0, lastSpace) : truncated).trim();
+      }
     }
 
     const cleanDescription = `${cleanTitle}\n\n${(data.description || '').replace(/[<>]/g, '')}\n\n#Shorts #Noticias #Tendencias`.slice(0, 4900);
@@ -514,17 +557,20 @@ export class YouTubeService {
       throw new BadRequestException('YouTube no devolvió la URL de carga.');
     }
 
-    // 2. Subir los bytes del video
+    // 2. Subir los bytes del video a YouTube con cabeceras estrictas del protocolo Resumable Upload
     let uploadRes: any;
     try {
       uploadRes = await axios.put(uploadUrl, videoBuffer, {
         headers: {
+          Authorization: `Bearer ${accessToken}`,
           'Content-Type': mimeType,
           'Content-Length': videoBuffer.length,
+          'Content-Range': `bytes 0-${videoBuffer.length - 1}/${videoBuffer.length}`,
         },
         maxContentLength: Infinity,
         maxBodyLength: Infinity,
-        timeout: 180000,
+        timeout: 240000,
+        validateStatus: (status) => status >= 200 && status < 400,
       });
     } catch (err: any) {
       const yMsg =
@@ -534,7 +580,18 @@ export class YouTubeService {
       throw new BadRequestException(`Error enviando bytes de video a YouTube: ${yMsg}`);
     }
 
-    const videoId = uploadRes.data?.id;
+    if (uploadRes.status === 308) {
+      throw new BadRequestException('YouTube reportó subida incompleta (estado 308). Por favor reintenta.');
+    }
+
+    let videoId = uploadRes.data?.id;
+    if (!videoId && uploadRes.data?.items?.[0]?.id) {
+      videoId = uploadRes.data.items[0].id;
+    }
+
+    if (!videoId) {
+      throw new BadRequestException('YouTube no devolvió el identificador del video tras la subida.');
+    }
 
     await this.prisma.auditLog.create({
       data: {

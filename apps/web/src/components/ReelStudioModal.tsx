@@ -2147,7 +2147,7 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
 
       const res = await api.post('/youtube/publish-short', {
         channelDbId: channelIdToUse,
-        title: cleanPureTitle.slice(0, 90),
+        title: cleanPureTitle,
         description: `${cleanPureTitle}\n\n${cleanPureBody}\n\n#Shorts #Noticias #Tendencias`,
         videoBase64: base64data,
       });

@@ -146,7 +146,11 @@ export class MediaService {
       }
 
       ffmpegArgs.push(
+        '-map', '0:v:0',
+        '-map', hasAudio ? '0:a:0' : '1:a:0',
         '-c:v', 'libx264',
+        '-profile:v', 'main',
+        '-level:v', '4.0',
         '-pix_fmt', 'yuv420p',
         '-r', '30',
         '-g', '60',
