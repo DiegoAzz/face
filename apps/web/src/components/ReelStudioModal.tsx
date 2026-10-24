@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import api from '../api/client';
+import { CODIGO_VIRAL_BRAND } from '../assets/branding';
 import {
   X,
   Play,
@@ -32,6 +33,7 @@ import {
   Type,
   RotateCcw,
   Edit3,
+  Shield,
 } from 'lucide-react';
 
 interface ReelStudioModalProps {
@@ -54,6 +56,16 @@ export interface NarratorOption {
 }
 
 const NARRATORS: NarratorOption[] = [
+  {
+    id: 'podcast_host',
+    name: 'Host Podcast Código Viral',
+    badge: '🎙️ Modo Podcast Innovador',
+    desc: 'Tono cercano, dinámico e íntimo estilo Spotify / YouTube Video Podcast',
+    lang: 'es-US',
+    rate: 1.12,
+    pitch: 1.02,
+    gender: 'male',
+  },
   {
     id: 'capcut_viral',
     name: 'Narrador CapCut Viral',
@@ -290,8 +302,12 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
   // Tiempo actual de reproducción en segundos (Scrubbing / Playhead de CapCut)
   const [currentTime, setCurrentTime] = useState<number>(0);
 
+  // Modo Podcast Innovador y Guía de Zona Segura
+  const [isPodcastMode, setIsPodcastMode] = useState<boolean>(true);
+  const [showSafeZoneGuide, setShowSafeZoneGuide] = useState<boolean>(false);
+
   // Narrador seleccionado
-  const [selectedNarratorId, setSelectedNarratorId] = useState<string>('capcut_viral');
+  const [selectedNarratorId, setSelectedNarratorId] = useState<string>('podcast_host');
   const activeNarrator = NARRATORS.find((n) => n.id === selectedNarratorId) || NARRATORS[0];
 
   // Estilo de subtítulos CapCut
@@ -308,7 +324,7 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
   const [customBody, setCustomBody] = useState<string>(cleanNewsForNarration(body || draft?.body || ''));
 
   // Cintillo Inferior Rojo editable por el usuario
-  const defaultTicker = `🚨 ÚLTIMA HORA • NOTICIA CONFIRMADA • FUENTE: ${draft?.sourceAttribution || 'PORTAFOLIO'} • COMPARTE ESTE VIDEO EN TIKTOK, REELS Y SHORTS • `;
+  const defaultTicker = `🎙️ CÓDIGO VIRAL PODCAST • REDES · APPS · DINERO · VIDA • SÍGUENOS EN @CodigoViralOficial14 • `;
   const [tickerText, setTickerText] = useState<string>(defaultTicker);
   const [showTicker, setShowTicker] = useState<boolean>(true);
 
@@ -447,8 +463,9 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
 
   // MANIPULACIÓN DIRECTA DE ELEMENTOS EN CANVAS (ESTILO CAPCUT)
   const [selectedElement, setSelectedElement] = useState<'image' | 'title' | 'subtitles' | 'ticker' | 'none' | string>('image');
-  const [titlePos, setTitlePos] = useState<{ x: number; y: number }>({ x: 40, y: 720 });
-  const [subtitlesPos, setSubtitlesPos] = useState<{ x: number; y: number }>({ x: 360, y: 940 });
+  // Calibración estricta de Zona Segura YouTube Shorts (evita botones Me gusta/Comentarios a la derecha y título inferior)
+  const [titlePos, setTitlePos] = useState<{ x: number; y: number }>({ x: 45, y: 500 });
+  const [subtitlesPos, setSubtitlesPos] = useState<{ x: number; y: number }>({ x: 285, y: 720 });
   const [overlays, setOverlays] = useState<Array<{
     id: string;
     text: string;
@@ -596,6 +613,42 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
       isCancelled = true;
     };
   }, [draft?.id, draft?.sourceUrl]);
+
+  // Carga del Logo Oficial de CÓDIGO VIRAL en memoria para Canvas
+  const logoImgRef = useRef<HTMLImageElement | null>(null);
+
+  useEffect(() => {
+    const img = new Image();
+    img.src = CODIGO_VIRAL_BRAND.logoBase64;
+    img.onload = () => {
+      logoImgRef.current = img;
+      if (canvasRef.current) {
+        drawFrame(currentTime / totalClipsDuration);
+      }
+    };
+  }, []);
+
+  // Función para adaptar cualquier noticia a guión conversacional de podcast innovador
+  const handleConvertToPodcastScript = () => {
+    let clean = cleanNewsForNarration(customBody || cleanPureBody);
+    if (!clean) return;
+
+    clean = clean.replace(/^(Oigan|Hola a todos|Bienvenidos|Atención|Escuchen bien):?\s*/i, '');
+
+    const podcastHooks = [
+      '¡Oigan, les tengo que contar esto que acaba de confirmarse! Pónganle mucha atención a este dato en Código Viral:',
+      '¡Miren esto tan impresionante que acaba de salir a la luz! Les cuento los detalles en Código Viral:',
+      '¿Ustedes ya se enteraron de lo que acaba de pasar? Escuchen bien esta noticia:',
+    ];
+    const randomHook = podcastHooks[Math.floor(Math.random() * podcastHooks.length)];
+    const cta = '¿Ustedes qué opinan de todo esto? Déjenmelo saber en los comentarios y suscríbanse a Código Viral para no perderse ninguna noticia al instante.';
+
+    const podcastBody = `${randomHook} ${clean}. ${cta}`;
+    setCustomBody(podcastBody);
+    setSelectedNarratorId('podcast_host');
+    setIsPodcastMode(true);
+    setPublishNotice('🎙️ ¡Noticia adaptada a formato Podcast Viral con gancho conversacional y locutor dinámico!');
+  };
 
   // Cargar páginas de Facebook y canales de YouTube disponibles (con token JWT)
   useEffect(() => {
@@ -1398,8 +1451,8 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
   };
 
   const handleResetPositions = () => {
-    setTitlePos({ x: 40, y: 720 });
-    setSubtitlesPos({ x: 360, y: 940 });
+    setTitlePos({ x: 45, y: 500 });
+    setSubtitlesPos({ x: 285, y: 720 });
     setClips((prev) => {
       const updated = [...prev];
       if (updated[activeClipIndex]) {
@@ -1643,7 +1696,7 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, width, height);
 
-    // 3. BARRA SUPERIOR DE TV EN VIVO
+    // 3. BARRA SUPERIOR DE TV EN VIVO / PODCAST CÓDIGO VIRAL
     ctx.save();
     ctx.fillStyle = '#dc2626';
     ctx.fillRect(0, 0, width, 84);
@@ -1658,17 +1711,57 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
     ctx.font = '900 23px system-ui, -apple-system, sans-serif';
     ctx.textAlign = 'left';
     ctx.fillText(
-      durationMode === 'youtube_15' ? 'NOTICIAS AL INSTANTE' : 'EN VIVO • NOTICIAS COLOMBIA',
+      isPodcastMode
+        ? '🎙️ PODCAST CÓDIGO VIRAL • AL INSTANTE'
+        : durationMode === 'youtube_15'
+        ? '🔴 CÓDIGO VIRAL • NOTICIAS'
+        : 'EN VIVO • CÓDIGO VIRAL NOTICIAS',
       65,
       50
     );
-
-    const now = new Date();
-    const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-    ctx.font = 'bold 20px monospace';
-    ctx.textAlign = 'right';
-    ctx.fillText(`${timeStr} COT`, width - 35, 50);
+    // SE ELIMINÓ EL RELOJ EN width - 35: Evita la colisión con el ícono de búsqueda y los 3 puntos de YouTube Shorts
     ctx.restore();
+
+    // 3b. WATERMARK / LOGO OFICIAL CÓDIGO VIRAL CON IDENTIFICADOR DE CANAL
+    if (logoImgRef.current) {
+      ctx.save();
+      const logoSize = 64;
+      const logoX = 40;
+      const logoY = 96;
+
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.75)';
+      ctx.shadowBlur = 8;
+      ctx.shadowOffsetX = 2;
+      ctx.shadowOffsetY = 2;
+
+      ctx.beginPath();
+      ctx.arc(logoX + logoSize / 2, logoY + logoSize / 2, logoSize / 2, 0, Math.PI * 2);
+      ctx.closePath();
+      ctx.clip();
+      ctx.drawImage(logoImgRef.current, logoX, logoY, logoSize, logoSize);
+      ctx.restore();
+
+      ctx.save();
+      ctx.strokeStyle = '#ef4444';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(logoX + logoSize / 2, logoY + logoSize / 2, logoSize / 2, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+
+      ctx.save();
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '900 16px system-ui, -apple-system, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
+      ctx.shadowBlur = 5;
+      ctx.fillText('CÓDIGO VIRAL', logoX + logoSize + 12, logoY + 28);
+
+      ctx.fillStyle = '#f87171';
+      ctx.font = 'bold 12px system-ui, sans-serif';
+      ctx.fillText('CANAL OFICIAL • @CodigoViralOficial14', logoX + logoSize + 12, logoY + 48);
+      ctx.restore();
+    }
 
     // 4. INDICADOR DE ESCENA / CORTE (Sólo en previsualización de edición, NUNCA en exportación)
     if (!isRecording && !isRecordingRef.current && !isExporting) {
@@ -1718,7 +1811,8 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
       return lines;
     };
 
-    const maxTitleWidth = width - 80;
+    // Ancho calibrado para Zona Segura: deja 210px limpios a la derecha para no tapar Me gusta / Comentarios
+    const maxTitleWidth = width - 210;
     let titleLines = wrapTitle(customTitle, maxTitleWidth);
 
     // Si aún con ese tamaño salen más de 4 líneas, reducir un poco más la fuente para que quepa TODO
@@ -1763,7 +1857,7 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
       rawSubtitle = (subtitleChunks[activeSubtitleIndex] || '').toUpperCase();
     } else {
       // Cuando el narrador concluye: llamado a la acción viral (CTA) de alto impacto
-      rawSubtitle = '🚨 NOTICIA EN DESARROLLO • COMPARTE';
+      rawSubtitle = '🚨 SÍGUENOS EN CÓDIGO VIRAL';
       isCtaPhase = true;
     }
 
@@ -1778,7 +1872,8 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
     }
 
     const pillPaddingX = 24;
-    const pillWidth = Math.min(measuredWidth + pillPaddingX * 2, width - 80);
+    // Ancho de subtítulo dentro de la Zona Segura (máximo 480px)
+    const pillWidth = Math.min(measuredWidth + pillPaddingX * 2, 480);
     const pillHeight = subFontSize + 24;
     const pillX = subtitlesPos.x - pillWidth / 2;
     const pillY = subtitlesPos.y;
@@ -1860,22 +1955,87 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
       ctx.restore();
     });
 
-    // 7. CINTILLO / TICKER INFERIOR
-    ctx.save();
-    ctx.fillStyle = '#b91c1c';
-    ctx.fillRect(0, 1135, width, 55);
+    // 7. CINTILLO / ONDA DE AUDIO REACTIVA PODCAST (Zona Segura y visualización innovadora)
+    if (isPodcastMode) {
+      ctx.save();
+      const waveX = 45;
+      const waveY = 820;
+      const numBars = 22;
+      const barWidth = 6;
+      const barGap = 5;
 
-    const displayText = tickerText.endsWith(' • ') ? tickerText : `${tickerText} • `;
-    ctx.font = 'bold 20px system-ui, sans-serif';
-    ctx.fillStyle = '#ffffff';
-    ctx.textAlign = 'left';
+      for (let b = 0; b < numBars; b++) {
+        const freq = Math.sin(progress * 35 + b * 0.7) * Math.cos(progress * 22 + b * 0.5);
+        const barHeight = Math.max(8, Math.abs(freq) * 44 + 10);
+        const bx = waveX + b * (barWidth + barGap);
+        const by = waveY - barHeight / 2;
 
-    const textWidth = Math.max(ctx.measureText(displayText).width, 100);
-    const tickerOffset = (progress * 1800) % textWidth;
-    ctx.fillText(displayText, -tickerOffset, 1170);
-    ctx.fillText(displayText, textWidth - tickerOffset, 1170);
-    ctx.fillText(displayText, textWidth * 2 - tickerOffset, 1170);
-    ctx.restore();
+        const barGrad = ctx.createLinearGradient(0, by, 0, by + barHeight);
+        barGrad.addColorStop(0, '#ef4444');
+        barGrad.addColorStop(1, '#facc15');
+
+        ctx.fillStyle = barGrad;
+        ctx.beginPath();
+        ctx.roundRect(bx, by, barWidth, barHeight, 3);
+        ctx.fill();
+      }
+
+      ctx.fillStyle = '#f8fafc';
+      ctx.font = '900 15px system-ui, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText('🎙️ CÓDIGO VIRAL PODCAST', waveX + numBars * (barWidth + barGap) + 12, waveY + 5);
+      ctx.restore();
+    } else if (showTicker) {
+      ctx.save();
+      // Posición elevada a y=840 para que NUNCA lo tape la barra de navegación de YouTube
+      ctx.fillStyle = '#b91c1c';
+      ctx.fillRect(0, 840, width, 40);
+
+      const displayText = tickerText.endsWith(' • ') ? tickerText : `${tickerText} • `;
+      ctx.font = 'bold 16px system-ui, sans-serif';
+      ctx.fillStyle = '#ffffff';
+      ctx.textAlign = 'left';
+
+      const textWidth = Math.max(ctx.measureText(displayText).width, 100);
+      const tickerOffset = (progress * 1600) % textWidth;
+      ctx.fillText(displayText, -tickerOffset, 866);
+      ctx.fillText(displayText, textWidth - tickerOffset, 866);
+      ctx.fillText(displayText, textWidth * 2 - tickerOffset, 866);
+      ctx.restore();
+    }
+
+    // 7b. GUÍA VISUAL DE ZONA SEGURA DE YOUTUBE SHORTS (Para edición visual)
+    if (!isRecording && !isRecordingRef.current && !isExporting && showSafeZoneGuide) {
+      ctx.save();
+      // Columna derecha ocupada por botones de YouTube
+      ctx.fillStyle = 'rgba(239, 68, 68, 0.22)';
+      ctx.fillRect(550, 420, 170, 680);
+      ctx.strokeStyle = '#ef4444';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 4]);
+      ctx.strokeRect(550, 420, 170, 680);
+
+      ctx.fillStyle = '#fca5a5';
+      ctx.font = 'bold 12px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('BOTONES YOUTUBE', 635, 750);
+      ctx.fillText('(Me gusta, Comentarios)', 635, 770);
+
+      // Área inferior ocupada por canal y título
+      ctx.fillStyle = 'rgba(239, 68, 68, 0.25)';
+      ctx.fillRect(0, 890, width, 390);
+      ctx.strokeRect(0, 890, width, 390);
+      ctx.fillText('ZONA CANAL Y TÍTULO YOUTUBE', width / 2, 980);
+
+      // Caja de Zona Segura 100% visible
+      ctx.strokeStyle = '#22c55e';
+      ctx.lineWidth = 3;
+      ctx.setLineDash([8, 6]);
+      ctx.strokeRect(35, 90, 510, 780);
+      ctx.fillStyle = '#86efac';
+      ctx.fillText('✅ ZONA SEGURA 100% VISIBLE', 290, 130);
+      ctx.restore();
+    }
 
     // 8. BARRA DE PROGRESO INFERIOR
     ctx.fillStyle = '#FACC15';
@@ -2220,7 +2380,7 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
     // Copiar titular viral optimizado y hashtags al portapapeles de inmediato en el gesto de usuario
     const finalHeadline = (customTitle || cleanPureTitle).trim();
     const shortTitle = finalHeadline.slice(0, 65).trim();
-    const fullCopy = `${shortTitle} #Shorts #Noticias\n\n${customBody || cleanPureBody}\n\n#Shorts #Noticias #Colombia #Viral`;
+    const fullCopy = `${shortTitle} #Shorts #CodigoViral\n\n${customBody || cleanPureBody}\n\n🎙️ CÓDIGO VIRAL | Redes · Apps · Dinero · Vida\n🚨 Síguenos en @CodigoViralOficial14 para más análisis y noticias al instante.\n\n#CodigoViral #Shorts #PodcastViral #Noticias #Colombia #Tendencias`;
     try {
       await navigator.clipboard.writeText(fullCopy);
     } catch {}
@@ -2491,11 +2651,27 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
                 </button>
                 <button
                   type="button"
+                  onClick={() => {
+                    setShowSafeZoneGuide((prev) => !prev);
+                    setTimeout(() => drawFrame(currentTime / totalClipsDuration), 50);
+                  }}
+                  className={`px-2 py-1 rounded-lg text-[10px] font-bold transition flex items-center space-x-1 ${
+                    showSafeZoneGuide
+                      ? 'bg-amber-600 text-white shadow-sm'
+                      : 'bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700'
+                  }`}
+                  title="Muestra en pantalla la zona segura para que los botones de YouTube Shorts no tapen nada"
+                >
+                  <Shield className="w-3 h-3 text-amber-400" />
+                  <span>{showSafeZoneGuide ? 'Ocultar Zona Segura' : '🛡️ Zona Segura Shorts'}</span>
+                </button>
+                <button
+                  type="button"
                   onClick={handleResetPositions}
                   className="px-1.5 py-1 rounded-lg text-[10px] text-slate-400 hover:text-white hover:bg-slate-700 transition"
-                  title="Restablecer posiciones al centro"
+                  title="Restablecer posiciones a la zona segura"
                 >
-                  ↺ Centrar
+                  ↺ Calibrar
                 </button>
               </div>
             </div>
@@ -2876,6 +3052,48 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
 
           {/* COLUMNA 2: HERRAMIENTAS MINI CAPCUT */}
           <div className="lg:col-span-7 space-y-3.5">
+            {/* Modo Podcast Viral Innovador (CÓDIGO VIRAL) */}
+            <div className="bg-gradient-to-r from-red-950/70 via-slate-900 to-purple-950/60 p-3 rounded-2xl border border-red-500/50 space-y-2.5 shadow-lg">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <div className="w-8 h-8 rounded-lg overflow-hidden border border-red-500 flex items-center justify-center bg-black shadow">
+                    <img src={CODIGO_VIRAL_BRAND.logoBase64} alt="Código Viral" className="w-full h-full object-cover" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-bold text-red-400 block">🎙️ Modo Podcast Código Viral</span>
+                    <span className="text-[10px] text-slate-400">@CodigoViralOficial14 · Innovador</span>
+                  </div>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={isPodcastMode}
+                    onChange={(e) => {
+                      setIsPodcastMode(e.target.checked);
+                      if (e.target.checked) setSelectedNarratorId('podcast_host');
+                      setTimeout(() => drawFrame(currentTime / totalClipsDuration), 50);
+                    }}
+                    className="sr-only peer"
+                  />
+                  <div className="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-red-600"></div>
+                </label>
+              </div>
+
+              <div className="text-[11px] text-slate-300 leading-relaxed">
+                Entrega las noticias como un <strong className="text-white font-semibold">Micro-Podcast dinámico</strong>: incluye onda de audio animada en vivo, locución conversacional y el logo oficial de Código Viral.
+              </div>
+
+              <button
+                type="button"
+                onClick={handleConvertToPodcastScript}
+                className="w-full py-2 px-3 bg-red-600 hover:bg-red-500 text-white rounded-xl text-xs font-bold flex items-center justify-center space-x-1.5 shadow-md transition transform active:scale-98"
+                title="Transforma el texto formal en un relato conversacional de podcast con gancho y llamado a la acción"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>🎙️ Adaptar Guión a Podcast Conversacional</span>
+              </button>
+            </div>
+
             {/* 1. Selector de Plataforma y Duración */}
             <div className="bg-slate-800/60 p-3 rounded-2xl border border-slate-700/60 space-y-2">
               <label className="text-xs font-bold text-slate-200 flex items-center space-x-1.5">
