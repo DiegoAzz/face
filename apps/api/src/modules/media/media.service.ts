@@ -118,21 +118,52 @@ export class MediaService {
     try {
       await fs.promises.writeFile(inputPath, rawBuffer);
 
-      await new Promise<void>((resolve, reject) => {
-        const proc = spawn('ffmpeg', [
-          '-y',
-          '-i', inputPath,
-          '-c:v', 'libx264',
-          '-pix_fmt', 'yuv420p',
-          '-preset', 'ultrafast',
-          '-crf', '22',
-          '-c:a', 'aac',
-          '-b:a', '128k',
-          '-ar', '44100',
-          '-movflags', '+faststart',
-          outputPath,
+      // Detectar si el video de entrada contiene pista de audio
+      const hasAudio = await new Promise<boolean>((resolve) => {
+        const probe = spawn('ffprobe', [
+          '-v', 'error',
+          '-select_streams', 'a',
+          '-show_entries', 'stream=codec_name',
+          '-of', 'csv=p=0',
+          inputPath,
         ]);
+        let out = '';
+        probe.stdout?.on('data', (d) => (out += d.toString()));
+        probe.on('close', () => resolve(out.trim().length > 0));
+        probe.on('error', () => resolve(false));
+      });
 
+      const ffmpegArgs = [
+        '-y',
+        '-err_detect', 'ignore_err',
+        '-avoid_negative_ts', 'make_zero',
+        '-fflags', '+genpts+discardcorrupt',
+        '-i', inputPath,
+      ];
+
+      if (!hasAudio) {
+        ffmpegArgs.push('-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100');
+      }
+
+      ffmpegArgs.push(
+        '-c:v', 'libx264',
+        '-pix_fmt', 'yuv420p',
+        '-r', '30',
+        '-g', '60',
+        '-keyint_min', '30',
+        '-preset', 'veryfast',
+        '-crf', '22',
+        '-c:a', 'aac',
+        '-b:a', '128k',
+        '-ar', '44100',
+        '-ac', '2',
+        '-shortest',
+        '-movflags', '+faststart',
+        outputPath
+      );
+
+      await new Promise<void>((resolve, reject) => {
+        const proc = spawn('ffmpeg', ffmpegArgs);
         let stderr = '';
         proc.stderr?.on('data', (d) => {
           stderr += d.toString();

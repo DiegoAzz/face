@@ -962,6 +962,10 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
       const ctx = new AudioCtx();
       audioContextRef.current = ctx;
 
+      if (ctx.state === 'suspended') {
+        ctx.resume().catch(() => {});
+      }
+
       const dest = ctx.createMediaStreamDestination();
       audioDestinationRef.current = dest;
 

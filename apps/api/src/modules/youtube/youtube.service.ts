@@ -323,21 +323,52 @@ export class YouTubeService {
     try {
       await fs.promises.writeFile(inputPath, inputBuffer);
 
-      await new Promise<void>((resolve, reject) => {
-        const proc = spawn('ffmpeg', [
-          '-y',
-          '-i', inputPath,
-          '-c:v', 'libx264',
-          '-pix_fmt', 'yuv420p',
-          '-preset', 'ultrafast',
-          '-crf', '22',
-          '-c:a', 'aac',
-          '-b:a', '128k',
-          '-ar', '44100',
-          '-movflags', '+faststart',
-          outputPath,
+      // Detectar si el video de entrada contiene pista de audio
+      const hasAudio = await new Promise<boolean>((resolve) => {
+        const probe = spawn('ffprobe', [
+          '-v', 'error',
+          '-select_streams', 'a',
+          '-show_entries', 'stream=codec_name',
+          '-of', 'csv=p=0',
+          inputPath,
         ]);
+        let out = '';
+        probe.stdout?.on('data', (d) => (out += d.toString()));
+        probe.on('close', () => resolve(out.trim().length > 0));
+        probe.on('error', () => resolve(false));
+      });
 
+      const ffmpegArgs = [
+        '-y',
+        '-err_detect', 'ignore_err',
+        '-avoid_negative_ts', 'make_zero',
+        '-fflags', '+genpts+discardcorrupt',
+        '-i', inputPath,
+      ];
+
+      if (!hasAudio) {
+        ffmpegArgs.push('-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100');
+      }
+
+      ffmpegArgs.push(
+        '-c:v', 'libx264',
+        '-pix_fmt', 'yuv420p',
+        '-r', '30',
+        '-g', '60',
+        '-keyint_min', '30',
+        '-preset', 'veryfast',
+        '-crf', '22',
+        '-c:a', 'aac',
+        '-b:a', '128k',
+        '-ar', '44100',
+        '-ac', '2',
+        '-shortest',
+        '-movflags', '+faststart',
+        outputPath
+      );
+
+      await new Promise<void>((resolve, reject) => {
+        const proc = spawn('ffmpeg', ffmpegArgs);
         let stderr = '';
         proc.stderr?.on('data', (d) => {
           stderr += d.toString();
@@ -425,10 +456,9 @@ export class YouTubeService {
 
     const cleanDescription = `${cleanTitle}\n\n${(data.description || '').replace(/[<>]/g, '')}\n\n#Shorts #Noticias #Tendencias`.slice(0, 4900);
 
-    // 1. Iniciar sesión de subida resumible en YouTube
-    let initRes: any;
-    try {
-      initRes = await axios.post(
+    // Helper para iniciar sesión de subida resumible en YouTube
+    const startUploadSession = async (privacyStatus: 'public' | 'unlisted' | 'private') => {
+      return axios.post(
         'https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status',
         {
           snippet: {
@@ -438,7 +468,7 @@ export class YouTubeService {
             tags: ['Shorts', 'Noticias', 'Actualidad', 'Colombia', 'Viral'],
           },
           status: {
-            privacyStatus: 'public',
+            privacyStatus,
             selfDeclaredMadeForKids: false,
           },
         },
@@ -451,12 +481,32 @@ export class YouTubeService {
           },
         }
       );
+    };
+
+    // 1. Iniciar sesión de subida resumible en YouTube (con fallback a 'unlisted' si Google rechaza público por falta de verificación del proyecto)
+    let initRes: any;
+    try {
+      initRes = await startUploadSession('public');
     } catch (err: any) {
       const yMsg =
         (typeof err.response?.data === 'string' ? err.response.data : null) ||
         err.response?.data?.error?.message ||
-        err.message;
-      throw new BadRequestException(`Error iniciando subida a YouTube: ${yMsg}`);
+        err.message ||
+        '';
+      if (yMsg.includes('verification') || yMsg.includes('public') || yMsg.includes('uploadLimitExceeded') || err.response?.status === 400) {
+        console.warn('Reintentando subida a YouTube como "unlisted" por restricciones de cuenta/verificación de Google:', yMsg);
+        try {
+          initRes = await startUploadSession('unlisted');
+        } catch (innerErr: any) {
+          const innerMsg =
+            (typeof innerErr.response?.data === 'string' ? innerErr.response.data : null) ||
+            innerErr.response?.data?.error?.message ||
+            innerErr.message;
+          throw new BadRequestException(`Error iniciando subida a YouTube: ${innerMsg}`);
+        }
+      } else {
+        throw new BadRequestException(`Error iniciando subida a YouTube: ${yMsg}`);
+      }
     }
 
     const uploadUrl = initRes.headers?.location || initRes.headers?.Location;
