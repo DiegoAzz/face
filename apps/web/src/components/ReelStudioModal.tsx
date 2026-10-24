@@ -302,6 +302,9 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
   // Tiempo actual de reproducción en segundos (Scrubbing / Playhead de CapCut)
   const [currentTime, setCurrentTime] = useState<number>(0);
 
+  // Selector de Marca: 'codigo_viral' (para YouTube) o 'diegoaz_facebook' (para Facebook)
+  const [brandMode, setBrandMode] = useState<'codigo_viral' | 'diegoaz_facebook'>('codigo_viral');
+
   // Modo Podcast Innovador y Guía de Zona Segura
   const [isPodcastMode, setIsPodcastMode] = useState<boolean>(true);
   const [showSafeZoneGuide, setShowSafeZoneGuide] = useState<boolean>(false);
@@ -714,6 +717,17 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
   const handleSelectDurationMode = (mode: 'youtube_15' | 'reels_30' | 'reels_60') => {
     stopPlayback();
     setDurationMode(mode);
+    if (mode === 'reels_30' || mode === 'reels_60') {
+      // Si el usuario cambia a Reels de Facebook, activamos automáticamente la identidad DiegoAz
+      setBrandMode('diegoaz_facebook');
+      setIsPodcastMode(false);
+      setTickerText('🚨 NOTICIAS EN VIVO • DIEGOAZ • COMPARTE ESTE VIDEO EN FACEBOOK REELS • ');
+    } else {
+      // Si es YouTube Shorts, activamos Código Viral
+      setBrandMode('codigo_viral');
+      setIsPodcastMode(true);
+      setTickerText('🎙️ CÓDIGO VIRAL PODCAST • REDES · APPS · DINERO · VIDA • SÍGUENOS EN @CodigoViralOficial14 • ');
+    }
     const newTarget = mode === 'youtube_15' ? 14 : mode === 'reels_30' ? 30 : 55;
     setClips((prev) => {
       if (prev.length === 0) return [];
@@ -1744,19 +1758,21 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
     ctx.font = '900 23px system-ui, -apple-system, sans-serif';
     ctx.textAlign = 'left';
     ctx.fillText(
-      isPodcastMode
+      brandMode === 'diegoaz_facebook'
+        ? '🔴 DIEGOAZ • NOTICIAS EN VIVO'
+        : isPodcastMode
         ? '🎙️ PODCAST CÓDIGO VIRAL • AL INSTANTE'
         : durationMode === 'youtube_15'
         ? '🔴 CÓDIGO VIRAL • NOTICIAS'
-        : 'EN VIVO • CÓDIGO VIRAL NOTICIAS',
+        : 'EN VIVO • NOTICIAS COLOMBIA',
       65,
       50
     );
     // SE ELIMINÓ EL RELOJ EN width - 35: Evita la colisión con el ícono de búsqueda y los 3 puntos de YouTube Shorts
     ctx.restore();
 
-    // 3b. WATERMARK / LOGO OFICIAL CÓDIGO VIRAL CON IDENTIFICADOR DE CANAL
-    if (logoImgRef.current) {
+    // 3b. WATERMARK / LOGO OFICIAL: Solo se dibuja si la marca activa es Código Viral (en Facebook/DiegoAz se oculta 100%)
+    if (brandMode === 'codigo_viral' && logoImgRef.current) {
       ctx.save();
       const logoSize = 64;
       const logoX = 40;
@@ -1890,7 +1906,9 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
       rawSubtitle = (subtitleChunks[activeSubtitleIndex] || '').toUpperCase();
     } else {
       // Cuando el narrador concluye: llamado a la acción viral (CTA) de alto impacto
-      rawSubtitle = '🚨 SÍGUENOS EN CÓDIGO VIRAL';
+      rawSubtitle = brandMode === 'diegoaz_facebook'
+        ? '🚨 SÍGUENOS EN DIEGOAZ • COMPARTE'
+        : '🚨 SÍGUENOS EN CÓDIGO VIRAL';
       isCtaPhase = true;
     }
 
@@ -1988,8 +2006,8 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
       ctx.restore();
     });
 
-    // 7. CINTILLO / ONDA DE AUDIO REACTIVA PODCAST (Zona Segura y visualización innovadora)
-    if (isPodcastMode) {
+    // 7. CINTILLO / ONDA DE AUDIO REACTIVA PODCAST (Solo en Código Viral; en Facebook DiegoAz se muestra cintillo limpio)
+    if (brandMode === 'codigo_viral' && isPodcastMode) {
       ctx.save();
       const waveX = 45;
       const waveY = 820;
@@ -3091,6 +3109,79 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
 
           {/* COLUMNA 2: HERRAMIENTAS MINI CAPCUT */}
           <div className="lg:col-span-7 space-y-3.5">
+            {/* SELECTOR DE MARCA / IDENTIDAD: CÓDIGO VIRAL (YouTube) vs DIEGOAZ (Facebook) */}
+            <div className="bg-slate-800/80 p-3 rounded-2xl border border-slate-700/80 space-y-2.5 shadow-lg">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-200 flex items-center space-x-1.5">
+                  <Shield className="w-4 h-4 text-sky-400" />
+                  <span>Identidad de Marca & Red Social</span>
+                </span>
+                <span className="text-[10px] text-slate-400 font-semibold">
+                  {brandMode === 'codigo_viral' ? '🔴 Código Viral (YouTube)' : '📘 DiegoAz (Facebook)'}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                {/* Opción 1: Código Viral (YouTube Shorts & Podcast) */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBrandMode('codigo_viral');
+                    setIsPodcastMode(true);
+                    setTickerText('🎙️ CÓDIGO VIRAL PODCAST • REDES · APPS · DINERO · VIDA • SÍGUENOS EN @CodigoViralOficial14 • ');
+                    setTimeout(() => drawFrame(currentTime / totalClipsDuration), 50);
+                  }}
+                  className={`p-2.5 rounded-xl border text-left transition flex items-center space-x-2 ${
+                    brandMode === 'codigo_viral'
+                      ? 'bg-red-600/20 border-red-500 text-white font-bold shadow-md shadow-red-500/20'
+                      : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <div className="w-6 h-6 rounded-full overflow-hidden border border-red-500 flex-shrink-0">
+                    <img src={CODIGO_VIRAL_BRAND.logoBase64} alt="Código Viral" className="w-full h-full object-cover" />
+                  </div>
+                  <div>
+                    <div className="font-bold text-red-400 text-[11px]">Código Viral</div>
+                    <div className="text-[9px] text-slate-400">YouTube Shorts</div>
+                  </div>
+                </button>
+
+                {/* Opción 2: DiegoAz (Facebook Reels - Oculta todo de Código Viral) */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBrandMode('diegoaz_facebook');
+                    setIsPodcastMode(false);
+                    setTickerText('🚨 NOTICIAS EN VIVO • DIEGOAZ • COMPARTE ESTE VIDEO EN FACEBOOK REELS • ');
+                    setTimeout(() => drawFrame(currentTime / totalClipsDuration), 50);
+                  }}
+                  className={`p-2.5 rounded-xl border text-left transition flex items-center space-x-2 ${
+                    brandMode === 'diegoaz_facebook'
+                      ? 'bg-blue-600/20 border-blue-500 text-white font-bold shadow-md shadow-blue-500/20'
+                      : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <div className="w-6 h-6 rounded-full bg-blue-600 text-white font-black flex items-center justify-center text-[11px] flex-shrink-0 shadow">
+                    D
+                  </div>
+                  <div>
+                    <div className="font-bold text-blue-400 text-[11px]">DiegoAz</div>
+                    <div className="text-[9px] text-slate-400">Facebook Reels</div>
+                  </div>
+                </button>
+              </div>
+
+              {brandMode === 'diegoaz_facebook' ? (
+                <div className="p-2 rounded-xl bg-blue-950/50 border border-blue-500/30 text-[11px] text-blue-300 flex items-center space-x-1.5 animate-fade-in">
+                  <span>✓ <strong>Modo Facebook Activo:</strong> Se ocultó el logo, stickers y marcas de Código Viral. El video se exporta limpio con la firma <strong>DiegoAz</strong>.</span>
+                </div>
+              ) : (
+                <div className="p-2 rounded-xl bg-red-950/40 border border-red-500/30 text-[11px] text-red-300 flex items-center space-x-1.5 animate-fade-in">
+                  <span>✓ <strong>Modo YouTube Activo:</strong> Logo oficial 3D y @CodigoViralOficial14 visibles en el video.</span>
+                </div>
+              )}
+            </div>
+
             {/* Modo Podcast Viral Innovador (CÓDIGO VIRAL) */}
             <div className="bg-gradient-to-r from-red-950/70 via-slate-900 to-purple-950/60 p-3 rounded-2xl border border-red-500/50 space-y-2.5 shadow-lg">
               <div className="flex items-center justify-between">
