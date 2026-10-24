@@ -133,6 +133,7 @@ export interface TimelineClip {
   offsetY?: number; // -180 a 180 (mover arriba/abajo en canvas)
   offsetX?: number; // -150 a 150 (mover izquierda/derecha en canvas)
   fitMode?: 'cover' | 'contain';
+  mediaType?: 'image' | 'video';
 }
 
 // Limpieza estricta de emojis, símbolos raros y agregadores
@@ -491,6 +492,9 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
   const audioElementRef = useRef<HTMLAudioElement | null>(null);
   const speechSynthesisUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const loadedVideosRef = useRef<Map<string, HTMLVideoElement>>(new Map());
+  const [mediaTab, setMediaTab] = useState<'photos' | 'videos'>('photos');
+  const [customVideoUrl, setCustomVideoUrl] = useState<string>('');
   const previewEffectAnimRef = useRef<number | null>(null);
   const isRecordingRef = useRef<boolean>(false);
   const [loadingNewsImages, setLoadingNewsImages] = useState(false);
@@ -511,64 +515,76 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
       .then((res) => {
         if (isCancelled) return;
         const fetched = res.data;
-        if (Array.isArray(fetched) && fetched.length >= 4) {
+        if (Array.isArray(fetched) && fetched.length > 0) {
           setSearchResults(fetched);
-          const perSec = parseFloat((targetDuration / 4).toFixed(1));
-          const transitions: ImageEffectType[] = ['zoom_in', 'pan_right', 'zoom_pan', 'zoom_out'];
-          const names = [
-            'Escena 1 (Gancho)',
-            'Escena 2 (Desarrollo)',
-            'Escena 3 (Detalles)',
-            'Escena 4 (Cierre)',
-          ];
+          // Garantizar que las escenas iniciales automáticas sean fotos nítidas (mediaType: 'image')
+          const photos = fetched.filter((item: any) => item.mediaType !== 'video');
+          const photoPool = photos.length >= 4
+            ? photos
+            : [...photos, ...suggestedStock.map((url) => ({ url, mediaType: 'image' }))];
 
-          setClips([
-            {
-              id: `clip_${Date.now()}_1`,
-              url: fetched[0].url,
-              duration: perSec,
-              transition: transitions[0],
-              name: names[0],
-              scale: 1.0,
-              offsetY: 0,
-              offsetX: 0,
-              fitMode: 'cover',
-            },
-            {
-              id: `clip_${Date.now()}_2`,
-              url: fetched[1].url,
-              duration: perSec,
-              transition: transitions[1],
-              name: names[1],
-              scale: 1.0,
-              offsetY: 0,
-              offsetX: 0,
-              fitMode: 'cover',
-            },
-            {
-              id: `clip_${Date.now()}_3`,
-              url: fetched[2].url,
-              duration: perSec,
-              transition: transitions[2],
-              name: names[2],
-              scale: 1.0,
-              offsetY: 0,
-              offsetX: 0,
-              fitMode: 'cover',
-            },
-            {
-              id: `clip_${Date.now()}_4`,
-              url: fetched[3].url,
-              duration: parseFloat((targetDuration - perSec * 3).toFixed(1)),
-              transition: transitions[3],
-              name: names[3],
-              scale: 1.0,
-              offsetY: 0,
-              offsetX: 0,
-              fitMode: 'cover',
-            },
-          ]);
-          setPublishNotice(`🎉 ¡4 fotos frescas relacionadas con esta noticia listas en la línea de tiempo!`);
+          if (photoPool.length >= 4) {
+            const perSec = parseFloat((targetDuration / 4).toFixed(1));
+            const transitions: ImageEffectType[] = ['zoom_in', 'pan_right', 'zoom_pan', 'zoom_out'];
+            const names = [
+              'Escena 1 (Gancho)',
+              'Escena 2 (Desarrollo)',
+              'Escena 3 (Detalles)',
+              'Escena 4 (Cierre)',
+            ];
+
+            setClips([
+              {
+                id: `clip_${Date.now()}_1`,
+                url: photoPool[0].url,
+                duration: perSec,
+                transition: transitions[0],
+                name: names[0],
+                scale: 1.0,
+                offsetY: 0,
+                offsetX: 0,
+                fitMode: 'cover',
+                mediaType: 'image',
+              },
+              {
+                id: `clip_${Date.now()}_2`,
+                url: photoPool[1].url,
+                duration: perSec,
+                transition: transitions[1],
+                name: names[1],
+                scale: 1.0,
+                offsetY: 0,
+                offsetX: 0,
+                fitMode: 'cover',
+                mediaType: 'image',
+              },
+              {
+                id: `clip_${Date.now()}_3`,
+                url: photoPool[2].url,
+                duration: perSec,
+                transition: transitions[2],
+                name: names[2],
+                scale: 1.0,
+                offsetY: 0,
+                offsetX: 0,
+                fitMode: 'cover',
+                mediaType: 'image',
+              },
+              {
+                id: `clip_${Date.now()}_4`,
+                url: photoPool[3].url,
+                duration: parseFloat((targetDuration - perSec * 3).toFixed(1)),
+                transition: transitions[3],
+                name: names[3],
+                scale: 1.0,
+                offsetY: 0,
+                offsetX: 0,
+                fitMode: 'cover',
+                mediaType: 'image',
+              },
+            ]);
+            setPublishNotice(`🎉 ¡4 fotos frescas relacionadas con esta noticia listas en la línea de tiempo!`);
+          }
         }
       })
       .catch((e) => console.warn('Error cargando fotos de noticia:', e))
@@ -640,8 +656,9 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
     drawFrame(currentTime / totalClipsDuration);
   }, [clips]);
 
-  // Cambiar modo de formato y recalcular duraciones proporcionales
+  // Cambiar modo de formato y recalcular duraciones proporcionales de forma limpia
   const handleSelectDurationMode = (mode: 'youtube_15' | 'reels_30' | 'reels_60') => {
+    stopPlayback();
     setDurationMode(mode);
     const newTarget = mode === 'youtube_15' ? 14 : mode === 'reels_30' ? 30 : 55;
     setClips((prev) => {
@@ -652,6 +669,10 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
         duration: Math.max(1.0, equalSec),
       }));
     });
+    setCurrentTime(0);
+    setTimeout(() => {
+      drawFrame(0);
+    }, 50);
   };
 
   // HERRAMIENTAS DE EDICIÓN CAPCUT:
@@ -881,31 +902,61 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
     setPublishNotice('✓ Nueva escena añadida.');
   };
 
-  // 6. Cambiar foto del clip activo
-  const handleSelectImageForActiveClip = (url: string) => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.src = url;
-    img.onload = () => {
-      loadedImagesRef.current[activeClipIndex] = img;
-      drawFrame(currentTime / totalClipsDuration);
-    };
-    img.onerror = () => {
-      const fallback = new Image();
-      fallback.src = url;
-      fallback.onload = () => {
-        loadedImagesRef.current[activeClipIndex] = fallback;
+  // 6. Cambiar foto o video del clip activo
+  const handleSelectMediaForActiveClip = (url: string, explicitType?: 'image' | 'video') => {
+    const isVideo = explicitType === 'video' ||
+      /\.(mp4|webm|mov|m4v)(\?.*)?$/i.test(url) ||
+      url.startsWith('data:video/') ||
+      url.startsWith('blob:');
+
+    const mediaType: 'image' | 'video' = isVideo ? 'video' : 'image';
+
+    if (isVideo) {
+      let v = loadedVideosRef.current.get(url);
+      if (!v) {
+        v = document.createElement('video');
+        v.src = url;
+        v.muted = true;
+        v.playsInline = true;
+        v.crossOrigin = 'anonymous';
+        v.preload = 'auto';
+        v.loop = true;
+        v.onloadeddata = () => {
+          drawFrame(currentTime / totalClipsDuration);
+        };
+        v.load();
+        loadedVideosRef.current.set(url, v);
+      }
+      setPublishNotice(`✓ Video asignado con éxito a la Escena ${activeClipIndex + 1}`);
+    } else {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.src = url;
+      img.onload = () => {
+        loadedImagesRef.current[activeClipIndex] = img;
         drawFrame(currentTime / totalClipsDuration);
       };
-    };
+      img.onerror = () => {
+        const fallback = new Image();
+        fallback.src = url;
+        fallback.onload = () => {
+          loadedImagesRef.current[activeClipIndex] = fallback;
+          drawFrame(currentTime / totalClipsDuration);
+        };
+      };
+      setPublishNotice(`✓ Foto asignada con éxito a la Escena ${activeClipIndex + 1}`);
+    }
+
     setClips((prev) => {
       const updated = [...prev];
       if (updated[activeClipIndex]) {
-        updated[activeClipIndex] = { ...updated[activeClipIndex], url };
+        updated[activeClipIndex] = { ...updated[activeClipIndex], url, mediaType };
       }
       return updated;
     });
   };
+
+  const handleSelectImageForActiveClip = (url: string) => handleSelectMediaForActiveClip(url, 'image');
 
   // Buscar fotos en internet
   const handleSearchImages = async (e?: React.FormEvent) => {
@@ -925,18 +976,26 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
     }
   };
 
-  // Subir archivo desde PC
+  // Subir archivo (Foto o Video) desde PC o celular
   const handleUploadFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const dataUrl = event.target?.result as string;
-      if (dataUrl) {
-        handleSelectImageForActiveClip(dataUrl);
-      }
-    };
-    reader.readAsDataURL(file);
+
+    if (file.type.startsWith('video/')) {
+      const objectUrl = URL.createObjectURL(file);
+      handleSelectMediaForActiveClip(objectUrl, 'video');
+      setMediaTab('videos');
+    } else {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const dataUrl = event.target?.result as string;
+        if (dataUrl) {
+          handleSelectMediaForActiveClip(dataUrl, 'image');
+          setMediaTab('photos');
+        }
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   // Scrubbing fluido y arrastre del cabezal de tiempo (Playhead) estilo CapCut
@@ -1443,11 +1502,69 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
         ? Math.min(Math.max((currentSec - clipStartSec) / currentClip.duration, 0), 1)
         : 0;
 
-      let img = loadedImagesRef.current[activeIdx];
-      if (!img || !img.complete || img.naturalWidth === 0) {
-        img = loadedImagesRef.current.find((im) => im && im.complete && im.naturalWidth > 0) || null;
+      const isVideoClip = currentClip?.mediaType === 'video' ||
+        /\.(mp4|webm|mov|m4v)(\?.*)?$/i.test(currentClip?.url || '') ||
+        (currentClip?.url || '').startsWith('data:video/') ||
+        (currentClip?.url || '').startsWith('blob:');
+
+      let mediaDrawable: CanvasImageSource | null = null;
+      let mediaNaturalW = 0;
+      let mediaNaturalH = 0;
+
+      if (isVideoClip && currentClip?.url) {
+        let v = loadedVideosRef.current.get(currentClip.url);
+        if (!v) {
+          v = document.createElement('video');
+          v.src = currentClip.url;
+          v.muted = true;
+          v.playsInline = true;
+          v.crossOrigin = 'anonymous';
+          v.preload = 'auto';
+          v.loop = true;
+          v.load();
+          loadedVideosRef.current.set(currentClip.url, v);
+        }
+        if (v && v.readyState >= 2) {
+          mediaDrawable = v;
+          mediaNaturalW = v.videoWidth || 1080;
+          mediaNaturalH = v.videoHeight || 1920;
+
+          const clipElapsed = Math.max(currentSec - clipStartSec, 0);
+
+          if (isPlaying || isRecording) {
+            // Reproducción suave hacia adelante: sin seek continuo a 60fps
+            if (v.duration && v.currentTime >= v.duration - 0.05) {
+              // Si el video concluye antes del fin de la escena, congelar en el último frame (estilo TV)
+              v.pause();
+            } else if (v.paused) {
+              v.play().catch(() => {});
+            }
+          } else {
+            // En pausa o arrastre manual: sincronizar tiempo con precisión
+            const targetTime = v.duration && v.duration > 0
+              ? Math.min(clipElapsed, v.duration - 0.05)
+              : clipElapsed;
+            if (Math.abs(v.currentTime - targetTime) > 0.1) {
+              v.currentTime = targetTime;
+            }
+            if (!v.paused) v.pause();
+          }
+        }
       }
-      if (img && img.complete && img.naturalWidth > 0) {
+
+      if (!mediaDrawable) {
+        let img = loadedImagesRef.current[activeIdx];
+        if (!img || !img.complete || img.naturalWidth === 0) {
+          img = loadedImagesRef.current.find((im) => im && im.complete && im.naturalWidth > 0) || null;
+        }
+        if (img && img.complete && img.naturalWidth > 0) {
+          mediaDrawable = img;
+          mediaNaturalW = img.naturalWidth;
+          mediaNaturalH = img.naturalHeight;
+        }
+      }
+
+      if (mediaDrawable && mediaNaturalW > 0 && mediaNaturalH > 0) {
         ctx.save();
         const clipScale = currentClip?.scale || 1.0;
         const clipOffsetX = currentClip?.offsetX || 0;
@@ -1459,38 +1576,29 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
 
         const transition = currentClip?.transition || 'zoom_in';
         if (transition === 'zoom_in') {
-          // Acercamiento cinematográfico notable (de 1.02 a 1.40)
           zoom = (1.02 + clipProgress * 0.38) * clipScale;
         } else if (transition === 'zoom_out') {
-          // Alejamiento suave y evidente (de 1.40 a 1.02)
           zoom = (1.40 - clipProgress * 0.38) * clipScale;
         } else if (transition === 'pan_right') {
-          // Paneo horizontal hacia la derecha
           zoom = 1.20 * clipScale;
           panX += (clipProgress - 0.5) * 130;
         } else if (transition === 'pan_left') {
-          // Paneo horizontal hacia la izquierda
           zoom = 1.20 * clipScale;
           panX += (0.5 - clipProgress) * 130;
         } else if (transition === 'pan_up') {
-          // Paneo vertical hacia arriba
           zoom = 1.20 * clipScale;
           panY += (clipProgress - 0.5) * 110;
         } else if (transition === 'pan_down') {
-          // Paneo vertical hacia abajo
           zoom = 1.20 * clipScale;
           panY += (0.5 - clipProgress) * 110;
         } else if (transition === 'zoom_pan') {
-          // Ken Burns diagonal notable
           zoom = (1.06 + clipProgress * 0.32) * clipScale;
           panX += (clipProgress - 0.5) * 90;
           panY += (clipProgress - 0.5) * 70;
         } else if (transition === 'pulse') {
-          // Pulso dinámico / Latido rítmico
           const pulseFactor = Math.sin(clipProgress * Math.PI * 2);
           zoom = (1.14 + pulseFactor * 0.14) * clipScale;
         } else if (transition === 'shake') {
-          // Cámara en mano (movimiento orgánico de reportaje)
           zoom = 1.16 * clipScale;
           const shakeFactor = Math.sin(clipProgress * Math.PI * 6);
           panX += shakeFactor * 12;
@@ -1499,7 +1607,7 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
           zoom = 1.05 * clipScale;
         }
 
-        const aspect = img.naturalWidth / img.naturalHeight;
+        const aspect = mediaNaturalW / mediaNaturalH;
         let drawW = width;
         let drawH = width / aspect;
         if (currentClip?.fitMode === 'contain') {
@@ -1519,7 +1627,7 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
 
         ctx.translate(imgCenterX + panX, imgCenterY + panY);
         ctx.scale(zoom, zoom);
-        ctx.drawImage(img, -drawW / 2, -drawH / 2, drawW, drawH);
+        ctx.drawImage(mediaDrawable, -drawW / 2, -drawH / 2, drawW, drawH);
         ctx.restore();
       } else {
         ctx.fillStyle = '#0f172a';
@@ -1959,6 +2067,9 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
       window.speechSynthesis.cancel();
     }
     speechSynthesisUtteranceRef.current = null;
+    loadedVideosRef.current.forEach((v) => {
+      try { v.pause(); } catch {}
+    });
   };
 
   // Renderizar video en memoria (Promise<Blob>)
@@ -3069,10 +3180,20 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
                                 : 'border-slate-700 hover:border-slate-500 opacity-80 hover:opacity-100'
                             }`}
                           >
-                            <img src={clip.url} alt={clip.name} className="w-full h-full object-cover" />
+                            {clip.mediaType === 'video' ? (
+                              <div className="w-full h-full bg-slate-900 flex items-center justify-center relative">
+                                <video src={clip.url} className="w-full h-full object-cover" muted playsInline />
+                                <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                                  <Film className="w-4 h-4 text-white/90 drop-shadow" />
+                                </div>
+                              </div>
+                            ) : (
+                              <img src={clip.url} alt={clip.name} className="w-full h-full object-cover" />
+                            )}
                             <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/30 pointer-events-none" />
-                            <div className="absolute top-1 left-1 bg-black/70 px-1 py-0.2 rounded text-[8px] font-bold text-sky-300 truncate max-w-[65%] pointer-events-none">
-                              {idx + 1}. {clip.name}
+                            <div className="absolute top-1 left-1 bg-black/70 px-1 py-0.2 rounded text-[8px] font-bold text-sky-300 truncate max-w-[70%] pointer-events-none flex items-center space-x-1">
+                              <span>{clip.mediaType === 'video' ? '🎥' : '📸'}</span>
+                              <span>{idx + 1}. {clip.name}</span>
                             </div>
 
                             {/* Botón de eliminar escena */}
@@ -3182,109 +3303,210 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
                 </div>
               </div>
 
-              {/* Asignar foto al clip activo */}
+              {/* Asignar foto o video al clip activo */}
               <div className="pt-2 border-t border-slate-700/50 space-y-2">
-                <div className="flex items-center justify-between text-[11px]">
-                  <span className="font-semibold text-slate-300">
-                    Cambiar imagen de la <span className="text-sky-400 font-bold">Escena {activeClipIndex + 1}</span>:
+                <div className="flex flex-wrap items-center justify-between gap-1 text-[11px]">
+                  <span className="font-semibold text-slate-300 flex items-center space-x-1.5">
+                    <span>Multimedia de la <span className="text-sky-400 font-bold">Escena {activeClipIndex + 1}</span>:</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-amber-300 font-mono font-bold">
+                      {clips[activeClipIndex]?.mediaType === 'video' ? '🎥 Modo Video' : '📸 Modo Foto'}
+                    </span>
                   </span>
 
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    className="text-sky-400 hover:text-sky-300 font-semibold flex items-center space-x-1"
-                  >
-                    <Upload className="w-3 h-3" />
-                    <span>Subir desde PC</span>
-                  </button>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*"
-                    onChange={handleUploadFile}
-                    className="hidden"
-                  />
-                </div>
-
-                {/* Buscador de fotos en internet */}
-                <form onSubmit={handleSearchImages} className="flex gap-1.5">
-                  <div className="relative flex-1">
+                  <div className="flex items-center space-x-1.5">
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="text-sky-300 hover:text-white bg-sky-900/60 hover:bg-sky-800 border border-sky-600/60 px-2.5 py-1 rounded-lg font-semibold flex items-center space-x-1 text-xs transition shadow"
+                      title="Sube una foto o video MP4/WebM desde tu dispositivo"
+                    >
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>Subir Foto o Video</span>
+                    </button>
                     <input
-                      type="text"
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      placeholder="Buscar fotos en internet (ej. Mike Tyson, Netflix, Bogotá)..."
-                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*,video/*,video/mp4,video/webm,video/quicktime"
+                      onChange={handleUploadFile}
+                      className="hidden"
                     />
                   </div>
-                  <button
-                    type="submit"
-                    disabled={isSearching}
-                    className="px-3 py-1.5 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-semibold flex items-center space-x-1 transition disabled:opacity-50"
-                  >
-                    {isSearching ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    ) : (
-                      <Search className="w-3.5 h-3.5" />
-                    )}
-                    <span>Buscar</span>
-                  </button>
-                </form>
+                </div>
 
-                {/* Resultados encontrados en internet */}
-                {searchResults.length > 0 && (
-                  <div className="space-y-1">
-                    <div className="text-[10px] text-slate-400 font-semibold flex items-center justify-between">
-                      <span>Resultados de internet (clic para asignar a Escena {activeClipIndex + 1}):</span>
-                      <span className="text-sky-400">{searchResults.length} fotos</span>
-                    </div>
-                    <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5 max-h-32 overflow-y-auto p-1 bg-slate-900/60 rounded-xl border border-slate-800">
-                      {searchResults.map((item, i) => (
+                {/* Selector de Pestañas: Fotos vs Videos */}
+                <div className="flex items-center space-x-1.5 bg-slate-900 p-1 rounded-xl border border-slate-800 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setMediaTab('photos')}
+                    className={`flex-1 py-1.5 rounded-lg font-bold transition flex items-center justify-center space-x-1.5 ${
+                      mediaTab === 'photos'
+                        ? 'bg-sky-600 text-white shadow'
+                        : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                    }`}
+                  >
+                    <span>📸 Fotos</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMediaTab('videos')}
+                    className={`flex-1 py-1.5 rounded-lg font-bold transition flex items-center justify-center space-x-1.5 ${
+                      mediaTab === 'videos'
+                        ? 'bg-rose-600 text-white shadow'
+                        : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                    }`}
+                  >
+                    <span>🎥 Videos ({searchResults.filter((r) => r.mediaType === 'video').length})</span>
+                  </button>
+                </div>
+
+                {/* Contenido Pestaña FOTOS */}
+                {mediaTab === 'photos' && (
+                  <div className="space-y-2">
+                    {/* Buscador de fotos en internet */}
+                    <form onSubmit={handleSearchImages} className="flex gap-1.5">
+                      <div className="relative flex-1">
+                        <input
+                          type="text"
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          placeholder="Buscar fotos en internet (ej. Mike Tyson, Bogotá)..."
+                          className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
+                        />
+                      </div>
+                      <button
+                        type="submit"
+                        disabled={isSearching}
+                        className="px-3 py-1.5 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-semibold flex items-center space-x-1 transition disabled:opacity-50"
+                      >
+                        {isSearching ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
+                        <span>Buscar</span>
+                      </button>
+                    </form>
+
+                    {/* Resultados de fotos */}
+                    {searchResults.filter((r) => r.mediaType !== 'video').length > 0 && (
+                      <div className="space-y-1">
+                        <div className="text-[10px] text-slate-400 font-semibold flex items-center justify-between">
+                          <span>Fotos de la noticia y web:</span>
+                          <span className="text-sky-400">{searchResults.filter((r) => r.mediaType !== 'video').length} fotos</span>
+                        </div>
+                        <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5 max-h-32 overflow-y-auto p-1 bg-slate-900/60 rounded-xl border border-slate-800">
+                          {searchResults.filter((r) => r.mediaType !== 'video').map((item, i) => (
+                            <div
+                              key={i}
+                              onClick={() => handleSelectMediaForActiveClip(item.url, 'image')}
+                              title={item.title}
+                              className="aspect-video rounded-lg overflow-hidden border border-slate-700 hover:border-sky-400 cursor-pointer transition relative group"
+                            >
+                              <img src={item.thumbUrl} alt={item.title} className="w-full h-full object-cover" />
+                              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition text-[9px] font-bold text-white">
+                                Usar
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Galería de fotos sugeridas */}
+                    <div className="grid grid-cols-4 sm:grid-cols-5 gap-1.5">
+                      {draft?.imageUrl && (
                         <div
-                          key={i}
-                          onClick={() => handleSelectImageForActiveClip(item.url)}
-                          title={item.title}
-                          className="aspect-video rounded-lg overflow-hidden border border-slate-700 hover:border-sky-400 cursor-pointer transition relative group"
+                          onClick={() =>
+                            handleSelectMediaForActiveClip(
+                              `/api/media/proxy?url=${encodeURIComponent(draft.imageUrl)}`,
+                              'image'
+                            )
+                          }
+                          className="aspect-video rounded-lg overflow-hidden border border-slate-700 cursor-pointer hover:border-sky-400 transition"
+                          title="Foto original de la noticia"
                         >
-                          <img src={item.thumbUrl} alt={item.title} className="w-full h-full object-cover" />
-                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition text-[9px] font-bold text-white">
-                            Usar
-                          </div>
+                          <img
+                            src={`/api/media/proxy?url=${encodeURIComponent(draft.imageUrl)}`}
+                            alt="Original"
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                      )}
+
+                      {suggestedStock.map((url, i) => (
+                        <div
+                          key={url}
+                          onClick={() => handleSelectMediaForActiveClip(url, 'image')}
+                          className="aspect-video rounded-lg overflow-hidden border border-slate-700 cursor-pointer hover:border-sky-400 transition"
+                          title="Foto temática sugerida"
+                        >
+                          <img src={url} alt={`Stock ${i + 1}`} className="w-full h-full object-cover" />
                         </div>
                       ))}
                     </div>
                   </div>
                 )}
 
-                {/* Galería de fotos sugeridas */}
-                <div className="grid grid-cols-4 sm:grid-cols-5 gap-1.5">
-                  {draft?.imageUrl && (
-                    <div
-                      onClick={() =>
-                        handleSelectImageForActiveClip(
-                          `/api/media/proxy?url=${encodeURIComponent(draft.imageUrl)}`
-                        )
-                      }
-                      className="aspect-video rounded-lg overflow-hidden border border-slate-700 cursor-pointer hover:border-sky-400 transition"
-                      title="Foto original de la noticia"
-                    >
-                      <img
-                        src={`/api/media/proxy?url=${encodeURIComponent(draft.imageUrl)}`}
-                        alt="Original"
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-                  )}
+                {/* Contenido Pestaña VIDEOS */}
+                {mediaTab === 'videos' && (
+                  <div className="space-y-2 bg-slate-900/70 p-2.5 rounded-xl border border-rose-900/40 text-xs">
+                    {/* Videos detectados de la noticia */}
+                    {searchResults.filter((r) => r.mediaType === 'video').length > 0 ? (
+                      <div className="space-y-1">
+                        <span className="text-[10px] text-rose-300 font-bold block">
+                          🎥 Videos detectados en la noticia (clic para asignar):
+                        </span>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                          {searchResults.filter((r) => r.mediaType === 'video').map((vItem, vi) => (
+                            <div
+                              key={vi}
+                              onClick={() => handleSelectMediaForActiveClip(vItem.url, 'video')}
+                              className="p-2 rounded-xl bg-slate-800 border border-rose-600/50 hover:border-rose-400 cursor-pointer transition space-y-1 group"
+                            >
+                              <div className="aspect-video bg-black rounded-lg overflow-hidden relative flex items-center justify-center">
+                                <video src={vItem.url} className="w-full h-full object-cover" muted />
+                                <Film className="w-5 h-5 text-rose-400 absolute drop-shadow" />
+                              </div>
+                              <div className="text-[10px] text-slate-200 font-semibold truncate">
+                                {vItem.title || `Video ${vi + 1}`}
+                              </div>
+                              <div className="text-[9px] text-rose-400 font-bold">Usar en Escena {activeClipIndex + 1} →</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="p-3 bg-slate-800/80 rounded-xl border border-slate-700/60 text-center space-y-1">
+                        <Film className="w-6 h-6 text-slate-400 mx-auto" />
+                        <div className="text-slate-300 font-semibold text-xs">No se detectó video embebido en el enlace oficial</div>
+                        <div className="text-slate-400 text-[10px]">Puedes subir un video desde tu PC o pegar su enlace directo abajo.</div>
+                      </div>
+                    )}
 
-                  {suggestedStock.map((url, i) => (
-                    <div
-                      key={url}
-                      onClick={() => handleSelectImageForActiveClip(url)}
-                      className="aspect-video rounded-lg overflow-hidden border border-slate-700 cursor-pointer hover:border-sky-400 transition"
-                    >
-                      <img src={url} alt={`Stock ${i + 1}`} className="w-full h-full object-cover" />
+                    {/* Pegar URL directa de video MP4 */}
+                    <div className="pt-2 border-t border-slate-800 space-y-1.5">
+                      <label className="text-[10px] text-slate-300 font-medium block">
+                        O pega la URL directa de un video (.mp4 / .webm):
+                      </label>
+                      <div className="flex gap-1.5">
+                        <input
+                          type="url"
+                          value={customVideoUrl}
+                          onChange={(e) => setCustomVideoUrl(e.target.value)}
+                          placeholder="https://servidor.com/video_noticia.mp4"
+                          className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-rose-500"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!customVideoUrl.trim()) return;
+                            handleSelectMediaForActiveClip(customVideoUrl.trim(), 'video');
+                            setCustomVideoUrl('');
+                          }}
+                          className="px-3 py-1 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-xl text-xs transition shadow"
+                        >
+                          Asignar
+                        </button>
+                      </div>
                     </div>
-                  ))}
-                </div>
+                  </div>
+                )}
               </div>
             </div>
 

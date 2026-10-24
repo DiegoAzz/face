@@ -356,11 +356,11 @@ export class MediaService {
     url?: string;
     title?: string;
     imageUrl?: string;
-  }): Promise<{ url: string; thumbUrl: string; title: string; source: string }[]> {
-    const images: { url: string; thumbUrl: string; title: string; source: string }[] = [];
+  }): Promise<{ url: string; thumbUrl: string; title: string; source: string; mediaType: 'image' | 'video' }[]> {
+    const images: { url: string; thumbUrl: string; title: string; source: string; mediaType: 'image' | 'video' }[] = [];
     const seenUrls = new Set<string>();
 
-    const addImage = (rawUrl: string, imgTitle: string, srcLabel: string) => {
+    const addImage = (rawUrl: string, imgTitle: string, srcLabel: string, mediaType: 'image' | 'video' = 'image') => {
       if (!rawUrl || typeof rawUrl !== 'string') return;
       const cleanUrl = rawUrl.trim();
       if (!cleanUrl.startsWith('http')) return;
@@ -383,15 +383,16 @@ export class MediaService {
       if (seenUrls.has(cleanUrl)) return;
       seenUrls.add(cleanUrl);
 
-      const proxyUrl = cleanUrl.startsWith('/api/media/proxy')
+      const proxyUrl = mediaType === 'video'
         ? cleanUrl
-        : `/api/media/proxy?url=${encodeURIComponent(cleanUrl)}`;
+        : (cleanUrl.startsWith('/api/media/proxy') ? cleanUrl : `/api/media/proxy?url=${encodeURIComponent(cleanUrl)}`);
 
       images.push({
         url: proxyUrl,
-        thumbUrl: proxyUrl,
-        title: imgTitle || params.title || 'Foto de la noticia',
+        thumbUrl: mediaType === 'video' ? (params.imageUrl || proxyUrl) : proxyUrl,
+        title: imgTitle || params.title || (mediaType === 'video' ? 'Video de la noticia' : 'Foto de la noticia'),
         source: srcLabel,
+        mediaType,
       });
     };
 
@@ -445,6 +446,22 @@ export class MediaService {
           }
           if (images.length >= 8) break;
         }
+
+        // Videos en OpenGraph, Twitter Cards y etiquetas <video> / <source> (colocados para la pestaña de Videos)
+        const videoMatches = [
+          ...html.matchAll(/<meta[^>]+(?:property|name)=["'](?:og:video|og:video:url|og:video:secure_url|twitter:player:stream)["'][^>]+content=["']([^"']+)["']/gi),
+          ...html.matchAll(/<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["'](?:og:video|og:video:url|og:video:secure_url|twitter:player:stream)["']/gi),
+          ...html.matchAll(/<video[^>]+src=["']([^"']+\.(?:mp4|webm|mov|m4v)[^"']*)["']/gi),
+          ...html.matchAll(/<source[^>]+src=["']([^"']+\.(?:mp4|webm|mov|m4v)[^"']*)["']/gi),
+        ];
+        for (const vm of videoMatches) {
+          if (vm[1]) {
+            try {
+              const fullUrl = new URL(vm[1], baseUrl).href;
+              addImage(fullUrl, params.title || 'Video de la noticia', 'Video oficial de la noticia', 'video');
+            } catch {}
+          }
+        }
       } catch (err: any) {
         console.warn('No se pudo extraer imágenes de la URL de la noticia:', err.message);
       }
@@ -462,6 +479,7 @@ export class MediaService {
               thumbUrl: item.thumbUrl,
               title: item.title,
               source: 'Búsqueda web',
+              mediaType: 'image',
             });
           }
           if (images.length >= 6) break;
