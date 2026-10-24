@@ -4,15 +4,8 @@ import {
   FileEdit,
   Newspaper,
   Share2,
-  LayoutDashboard,
   Menu,
   X,
-  Calendar,
-  Users,
-  Rss,
-  Sparkles,
-  History,
-  Settings,
   LogOut,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -21,38 +14,24 @@ export const MobileNav: React.FC = () => {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const { logout, user } = useAuth();
 
-  const primaryItems = [
-    { name: 'Editorial', path: '/editorial', icon: FileEdit },
+  const navItems = [
     { name: 'Noticias', path: '/news', icon: Newspaper },
-    { name: 'Páginas', path: '/pages', icon: Share2 },
-    { name: 'Inicio', path: '/', icon: LayoutDashboard },
-  ];
-
-  const allNavItems = [
-    { name: 'Inicio (KPIs)', path: '/', icon: LayoutDashboard },
-    { name: 'Noticias detectadas', path: '/news', icon: Newspaper },
-    { name: 'Sala editorial', path: '/editorial', icon: FileEdit },
-    { name: 'Calendario', path: '/calendar', icon: Calendar },
+    { name: 'Sala Editorial', path: '/editorial', icon: FileEdit },
     { name: 'Páginas Facebook', path: '/pages', icon: Share2 },
-    { name: 'Grupos (Manual)', path: '/groups', icon: Users },
-    { name: 'Fuentes RSS', path: '/sources', icon: Rss },
-    { name: 'Plantillas e IA', path: '/templates', icon: Sparkles },
-    { name: 'Historial y Métricas', path: '/history', icon: History },
-    { name: 'Configuración y Auditoría', path: '/settings', icon: Settings },
   ];
 
   return (
     <>
       {/* 1. Barra de Navegación Inferior Fija para Móvil (Estilo App) */}
-      <nav className="lg:hidden fixed bottom-0 inset-x-0 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 flex items-center justify-around py-1.5 px-2 z-40 shadow-lg">
-        {primaryItems.map((item) => {
+      <nav className="lg:hidden fixed bottom-0 inset-x-0 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 flex items-center justify-around py-2 px-3 z-40 shadow-lg">
+        {navItems.map((item) => {
           const Icon = item.icon;
           return (
             <NavLink
               key={item.path}
               to={item.path}
               className={({ isActive }) =>
-                `flex flex-col items-center justify-center py-1 px-3 rounded-xl transition ${
+                `flex flex-col items-center justify-center py-1 px-3 sm:px-4 rounded-xl transition ${
                   isActive
                     ? 'text-blue-600 dark:text-blue-400 font-bold scale-105'
                     : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
@@ -60,18 +39,18 @@ export const MobileNav: React.FC = () => {
               }
             >
               <Icon className="w-5 h-5 mb-0.5" />
-              <span className="text-[10px] leading-tight">{item.name}</span>
+              <span className="text-[11px] leading-tight font-medium">{item.name}</span>
             </NavLink>
           );
         })}
 
-        {/* Botón de Menú Más */}
+        {/* Botón de Menú / Cuenta */}
         <button
           onClick={() => setDrawerOpen(true)}
           className="flex flex-col items-center justify-center py-1 px-3 rounded-xl text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition"
         >
           <Menu className="w-5 h-5 mb-0.5" />
-          <span className="text-[10px] leading-tight">Menú</span>
+          <span className="text-[11px] leading-tight font-medium">Cuenta</span>
         </button>
       </nav>
 
@@ -105,12 +84,12 @@ export const MobileNav: React.FC = () => {
                 </button>
               </div>
 
-              {/* Lista completa de enlaces */}
+              {/* Lista limpia de enlaces */}
               <div className="space-y-1">
                 <div className="px-2 mb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                  Todas las Secciones
+                  Módulos Activos
                 </div>
-                {allNavItems.map((item) => {
+                {navItems.map((item) => {
                   const Icon = item.icon;
                   return (
                     <NavLink

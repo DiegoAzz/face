@@ -57,7 +57,7 @@ export const App: React.FC = () => {
             path="/"
             element={
               <ProtectedLayout>
-                <DashboardPage />
+                <Navigate to="/news" replace />
               </ProtectedLayout>
             }
           />

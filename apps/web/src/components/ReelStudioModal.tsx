@@ -532,8 +532,8 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
 
   // Precargar imágenes de todos los clips
   useEffect(() => {
-
     clips.forEach((clip, idx) => {
+      if (!clip.url) return;
       const img = new Image();
       img.crossOrigin = 'anonymous';
       img.src = clip.url;
@@ -542,10 +542,25 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
         drawFrame(currentTime / totalClipsDuration);
       };
       img.onerror = () => {
-        if (suggestedStock[idx]) {
-          const fallbackUrl = suggestedStock[idx % suggestedStock.length] || suggestedStock[0];
-          img.src = fallbackUrl;
-        }
+        // Si falla con crossOrigin, reintentar carga directa
+        const retry = new Image();
+        retry.src = clip.url;
+        retry.onload = () => {
+          loadedImagesRef.current[idx] = retry;
+          drawFrame(currentTime / totalClipsDuration);
+        };
+        retry.onerror = () => {
+          if (suggestedStock[idx]) {
+            const fallbackUrl = suggestedStock[idx % suggestedStock.length] || suggestedStock[0];
+            const stockImg = new Image();
+            stockImg.crossOrigin = 'anonymous';
+            stockImg.src = fallbackUrl;
+            stockImg.onload = () => {
+              loadedImagesRef.current[idx] = stockImg;
+              drawFrame(currentTime / totalClipsDuration);
+            };
+          }
+        };
       };
     });
     drawFrame(currentTime / totalClipsDuration);
@@ -794,6 +809,21 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
 
   // 6. Cambiar foto del clip activo
   const handleSelectImageForActiveClip = (url: string) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.src = url;
+    img.onload = () => {
+      loadedImagesRef.current[activeClipIndex] = img;
+      drawFrame(currentTime / totalClipsDuration);
+    };
+    img.onerror = () => {
+      const fallback = new Image();
+      fallback.src = url;
+      fallback.onload = () => {
+        loadedImagesRef.current[activeClipIndex] = fallback;
+        drawFrame(currentTime / totalClipsDuration);
+      };
+    };
     setClips((prev) => {
       const updated = [...prev];
       if (updated[activeClipIndex]) {
@@ -850,11 +880,13 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
     // Auto-seleccionar el clip activo bajo el cursor
     let accum = 0;
     for (let i = 0; i < clips.length; i++) {
-      accum += clips[i].duration;
-      if (newTime < accum + clips[i].duration || i === clips.length - 1) {
+      const clipDur = clips[i]?.duration || 0.1;
+      const endSec = accum + clipDur;
+      if (newTime < endSec || i === clips.length - 1) {
         setActiveClipIndex(i);
         break;
       }
+      accum = endSec;
     }
   };
 
@@ -1237,17 +1269,19 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
     let accum = 0;
 
     for (let i = 0; i < clips.length; i++) {
-      const end = accum + clips[i].duration;
-      if (currentSec < accum + clips[i].duration || i === clips.length - 1) {
+      const clipDur = clips[i]?.duration || 0.1;
+      const endSec = accum + clipDur;
+      if (currentSec < endSec || i === clips.length - 1) {
         activeIdx = i;
         clipStartSec = accum;
         break;
       }
-      accum = end;
+      accum = endSec;
     }
-    if (currentSec >= accum && clips.length > 0) {
-      activeIdx = clips.length - 1;
-      clipStartSec = accum - clips[activeIdx].duration;
+
+    if (activeIdx !== activeClipIndexRef.current) {
+      activeClipIndexRef.current = activeIdx;
+      setActiveClipIndex(activeIdx);
     }
 
     // 1. DIBUJAR IMAGEN O FONDO CINEMATOGRÁFICO DE ESTUDIO (Si no hay fotos o se eliminaron)

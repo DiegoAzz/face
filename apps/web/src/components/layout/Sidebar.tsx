@@ -1,29 +1,15 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
 import {
-  LayoutDashboard,
   Newspaper,
   FileEdit,
-  Calendar,
   Share2,
-  Users,
-  Rss,
-  Sparkles,
-  History,
-  Settings,
 } from 'lucide-react';
 
 const navItems = [
-  { name: 'Inicio (KPIs)', path: '/', icon: LayoutDashboard },
   { name: 'Noticias detectadas', path: '/news', icon: Newspaper },
   { name: 'Sala editorial', path: '/editorial', icon: FileEdit },
-  { name: 'Calendario', path: '/calendar', icon: Calendar },
   { name: 'Páginas Facebook', path: '/pages', icon: Share2 },
-  { name: 'Grupos (Manual)', path: '/groups', icon: Users },
-  { name: 'Fuentes RSS', path: '/sources', icon: Rss },
-  { name: 'Plantillas e IA', path: '/templates', icon: Sparkles },
-  { name: 'Historial y Métricas', path: '/history', icon: History },
-  { name: 'Configuración y Auditoría', path: '/settings', icon: Settings },
 ];
 
 export const Sidebar: React.FC = () => {
@@ -42,7 +28,7 @@ export const Sidebar: React.FC = () => {
               className={({ isActive }) =>
                 `flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                   isActive
-                    ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-400 font-semibold'
+                    ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-400 font-semibold shadow-sm'
                     : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-200'
                 }`
               }
