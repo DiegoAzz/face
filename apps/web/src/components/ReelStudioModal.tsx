@@ -339,9 +339,10 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
     ? (clipsSum > 0 ? parseFloat(clipsSum.toFixed(1)) : targetDuration)
     : targetDuration;
 
-  // Subtítulos virales con ráfagas cortas adaptadas exactamente a la duración del video
-  const subtitleChunks = React.useMemo(() => {
-    const wordsCount = Math.max(8, Math.round(totalClipsDuration * 2.4));
+  // Subtítulos virales con ráfagas cortas adaptadas exactamente a la locución
+  const { subtitleChunks, spokenWords } = React.useMemo(() => {
+    // Palabras calculadas para cubrir con dinamismo el relato y dejar remate final
+    const wordsCount = Math.max(10, Math.round(totalClipsDuration * 2.6));
     const fullText = `${customTitle}. ${customBody}`;
     const words = fullText.split(/\s+/).filter(Boolean).slice(0, wordsCount);
     const chunks: string[] = [];
@@ -349,8 +350,45 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
     for (let i = 0; i < words.length; i += chunkSize) {
       chunks.push(words.slice(i, i + chunkSize).join(' '));
     }
-    return chunks.length > 0 ? chunks : [customTitle];
+    return {
+      subtitleChunks: chunks.length > 0 ? chunks : [customTitle],
+      spokenWords: words,
+    };
   }, [customTitle, customBody, totalClipsDuration]);
+
+  // Duración real detectada del audio TTS
+  const [detectedAudioDuration, setDetectedAudioDuration] = useState<number>(0);
+  const audioDurationRef = useRef<number>(0);
+  const preloadedAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Estimación matemática de duración según ritmo del narrador
+  const estimatedSpeechDuration = React.useMemo(() => {
+    const wordsTotal = spokenWords.length || 10;
+    const dur = wordsTotal * (0.33 / (activeNarrator.rate || 1.0));
+    return Math.min(dur, totalClipsDuration);
+  }, [spokenWords.length, activeNarrator.rate, totalClipsDuration]);
+
+  const effectiveAudioDuration = detectedAudioDuration > 0
+    ? detectedAudioDuration
+    : estimatedSpeechDuration;
+
+  // Pre-cargar audio TTS al cambiar narrador o texto para respuesta y sincronía instantánea
+  useEffect(() => {
+    if (voiceVolume <= 0 || !customTitle) return;
+    const spokenText = spokenWords.join(' ');
+    const ttsUrl = `/api/media/tts?text=${encodeURIComponent(spokenText)}&lang=${activeNarrator.lang}`;
+    const audio = new Audio(ttsUrl);
+    audio.crossOrigin = 'anonymous';
+    audio.playbackRate = activeNarrator.rate;
+    audio.onloadedmetadata = () => {
+      if (audio.duration && audio.duration > 0 && !isNaN(audio.duration)) {
+        const dur = audio.duration / (activeNarrator.rate || 1.0);
+        audioDurationRef.current = dur;
+        setDetectedAudioDuration(dur);
+      }
+    };
+    preloadedAudioRef.current = audio;
+  }, [spokenWords, activeNarrator.lang, activeNarrator.rate, voiceVolume, customTitle]);
 
   // Buscador de imágenes de Internet
   const initialSearchWord = cleanPureTitle.split(' ').slice(0, 3).join(' ');
@@ -875,6 +913,19 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
     const percent = Math.max(0, Math.min((clientX - rect.left) / rect.width, 1));
     const newTime = percent * totalClipsDuration;
     setCurrentTime(newTime);
+
+    // Sincronizar audio en vivo con el cursor si está reproduciendo
+    if (audioElementRef.current) {
+      const targetAudioSec = newTime * (activeNarrator.rate || 1.0);
+      if (audioElementRef.current.duration && targetAudioSec < audioElementRef.current.duration) {
+        try {
+          audioElementRef.current.currentTime = targetAudioSec;
+        } catch {}
+      } else if (audioElementRef.current.duration) {
+        audioElementRef.current.pause();
+      }
+    }
+
     drawFrame(percent);
 
     // Auto-seleccionar el clip activo bajo el cursor
@@ -956,7 +1007,7 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
   };
 
   // CONFIGURACIÓN DE AUDIO (VOZ CRISTALINA SIN RUIDOS NI ZUMBIDOS MOLESTOS)
-  const setupAudioGraph = () => {
+  const setupAudioGraph = (initialTime: number = 0) => {
     try {
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
       const ctx = new AudioCtx();
@@ -981,19 +1032,28 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
 
       // Voz en off del narrador limpia y nítida
       if (voiceVolume > 0) {
-        // Adaptar la cantidad de texto exactamente a la duración del video
-        const wordsCount = Math.max(8, Math.round(totalClipsDuration * 2.4));
-        const fullText = `${customTitle}. ${customBody}`;
-        const spokenText = fullText.split(/\s+/).filter(Boolean).slice(0, wordsCount).join(' ');
-        const ttsUrl = `/api/media/tts?text=${encodeURIComponent(spokenText)}&lang=${activeNarrator.lang}&t=${Date.now()}`;
+        const spokenText = spokenWords.join(' ');
+        const ttsUrl = `/api/media/tts?text=${encodeURIComponent(spokenText)}&lang=${activeNarrator.lang}`;
         const audio = new Audio(ttsUrl);
         audio.crossOrigin = 'anonymous';
         audio.playbackRate = activeNarrator.rate;
         audioElementRef.current = audio;
 
-        audio.oncanplay = () => {
+        const connectAndPlay = () => {
           try {
             audio.playbackRate = activeNarrator.rate;
+            if (audio.duration && !isNaN(audio.duration) && audio.duration > 0) {
+              const realDur = audio.duration / (activeNarrator.rate || 1.0);
+              audioDurationRef.current = realDur;
+              setDetectedAudioDuration(realDur);
+            }
+            if (initialTime > 0) {
+              const targetSec = initialTime * (activeNarrator.rate || 1.0);
+              if (audio.duration && targetSec >= audio.duration) {
+                return;
+              }
+              audio.currentTime = targetSec;
+            }
             const source = ctx.createMediaElementSource(audio);
             const voiceGain = ctx.createGain();
             voiceGain.gain.setValueAtTime(0.95 * voiceVolume, ctx.currentTime);
@@ -1005,6 +1065,12 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
             audio.play().catch(() => {});
           }
         };
+
+        if (audio.readyState >= 2) {
+          connectAndPlay();
+        } else {
+          audio.oncanplay = connectAndPlay;
+        }
 
         audio.onerror = () => {
           if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
@@ -1530,15 +1596,30 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
     });
     ctx.restore();
 
-    // 6. SUBTÍTULOS ANIMADOS ESTILO CAPCUT VIRAL
+    // 6. SUBTÍTULOS ANIMADOS ESTILO CAPCUT SINCRONIZADOS CON LA VOZ
     ctx.save();
     ctx.textAlign = 'center';
 
-    const activeSubtitleIndex = Math.min(
-      Math.floor(progress * subtitleChunks.length),
-      subtitleChunks.length - 1
-    );
-    const rawSubtitle = (subtitleChunks[activeSubtitleIndex] || '').toUpperCase();
+    const wordsTotal = spokenWords.length || 10;
+    const fallbackDuration = wordsTotal * (0.33 / (activeNarrator.rate || 1.0));
+    const audioDur = audioDurationRef.current > 0 ? audioDurationRef.current : Math.min(fallbackDuration, totalClipsDuration);
+
+    let rawSubtitle = '';
+    let isCtaPhase = false;
+
+    if (currentSec < audioDur) {
+      // Mientras el narrador está hablando: ráfagas sincronizadas 1:1 con la voz
+      const audioProgress = Math.min(currentSec / audioDur, 1);
+      const activeSubtitleIndex = Math.min(
+        Math.floor(audioProgress * subtitleChunks.length),
+        subtitleChunks.length - 1
+      );
+      rawSubtitle = (subtitleChunks[activeSubtitleIndex] || '').toUpperCase();
+    } else {
+      // Cuando el narrador concluye: llamado a la acción viral (CTA) de alto impacto
+      rawSubtitle = '🚨 NOTICIA EN DESARROLLO • COMPARTE';
+      isCtaPhase = true;
+    }
 
     let subFontSize = 26;
     ctx.font = `900 ${subFontSize}px system-ui, -apple-system, sans-serif`;
@@ -1557,7 +1638,22 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
     const pillY = subtitlesPos.y;
     const textY = pillY + pillHeight / 2 + subFontSize * 0.35;
 
-    if (subtitleStyle === 'capcut_yellow') {
+    if (isCtaPhase) {
+      // Pastilla de cierre de alto impacto
+      ctx.fillStyle = '#dc2626';
+      ctx.beginPath();
+      ctx.roundRect(pillX, pillY, pillWidth, pillHeight, 14);
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = 5;
+      ctx.strokeText(rawSubtitle, subtitlesPos.x, textY);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(rawSubtitle, subtitlesPos.x, textY);
+    } else if (subtitleStyle === 'capcut_yellow') {
       ctx.fillStyle = 'rgba(0, 0, 0, 0.90)';
       ctx.beginPath();
       ctx.roundRect(pillX, pillY, pillWidth, pillHeight, 14);
@@ -1769,7 +1865,7 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
 
   const startPlayback = () => {
     setIsPlaying(true);
-    setupAudioGraph();
+    setupAudioGraph(currentTime);
     startTimeRef.current = performance.now() - currentTime * 1000;
     const totalMs = totalClipsDuration * 1000;
 
@@ -2941,25 +3037,39 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
                   </div>
                 </div>
 
-                {/* 3. PISTA DE SUBTÍTULOS (Subtitles CapCut) */}
+                {/* 3. PISTA DE SUBTÍTULOS (Subtitles CapCut sincronizados con la voz) */}
                 <div className="space-y-0.5 pointer-events-none">
                   <div className="flex items-center justify-between text-[10px] text-slate-400 font-semibold">
                     <span className="flex items-center space-x-1">
                       <Sparkles className="w-3 h-3 text-yellow-400" />
-                      <span>Subtítulos Virales CapCut</span>
+                      <span>Subtítulos en voz ({effectiveAudioDuration.toFixed(1)}s)</span>
                     </span>
+                    <span className="text-[9px] text-red-400 font-mono">Cierre: Viral CTA</span>
                   </div>
 
                   <div className="flex w-full h-5 rounded-lg overflow-hidden bg-slate-900/60 border border-slate-800 gap-0.5 p-0.5">
-                    {subtitleChunks.map((chunk, i) => (
+                    <div
+                      style={{ width: `${Math.min(100, (effectiveAudioDuration / totalClipsDuration) * 100)}%` }}
+                      className="h-full flex gap-0.5"
+                    >
+                      {subtitleChunks.map((chunk, i) => (
+                        <div
+                          key={i}
+                          style={{ width: `${(1 / subtitleChunks.length) * 100}%` }}
+                          className="h-full rounded bg-yellow-500/25 border border-yellow-500/40 flex items-center justify-center text-[7.5px] font-bold text-yellow-300 truncate px-1"
+                        >
+                          {chunk}
+                        </div>
+                      ))}
+                    </div>
+                    {totalClipsDuration > effectiveAudioDuration && (
                       <div
-                        key={i}
-                        style={{ width: `${(1 / subtitleChunks.length) * 100}%` }}
-                        className="h-full rounded bg-yellow-500/25 border border-yellow-500/40 flex items-center justify-center text-[7.5px] font-bold text-yellow-300 truncate px-1"
+                        style={{ width: `${Math.max(0, 100 - (effectiveAudioDuration / totalClipsDuration) * 100)}%` }}
+                        className="h-full rounded bg-red-600/30 border border-red-500/50 flex items-center justify-center text-[7.5px] font-bold text-red-300 truncate px-1"
                       >
-                        {chunk}
+                        🚨 COMPARTE
                       </div>
-                    ))}
+                    )}
                   </div>
                 </div>
 
