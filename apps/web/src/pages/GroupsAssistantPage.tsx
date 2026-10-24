@@ -39,7 +39,7 @@ export const GroupsAssistantPage: React.FC = () => {
 
   const handleCopyText = () => {
     if (!selectedDraft) return;
-    const textToCopy = `${selectedDraft.title}\n\n${selectedDraft.body}\n\nFuente: ${selectedDraft.sourceAttribution}\nEnlace: ${selectedDraft.sourceUrl}`;
+    const textToCopy = `${selectedDraft.title}\n\n${selectedDraft.body}`;
     navigator.clipboard.writeText(textToCopy);
     setCopied(true);
     setTimeout(() => setCopied(false), 2500);

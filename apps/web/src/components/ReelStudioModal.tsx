@@ -264,10 +264,10 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
   const [musicVolume, setMusicVolume] = useState<number>(0.25);
   const [voiceVolume, setVoiceVolume] = useState<number>(1.0);
 
-  // Limpieza estricta: SIN EMOJIS, SOLO LA NOTICIA PURA
-  const cleanPureTitle = cleanNewsForNarration(title || draft?.title || '');
+  // Limpieza estricta: Titular optimizado para YouTube Shorts (50-65 chars) y texto limpio
+  const cleanPureTitle = formatShortViralTitle(title || draft?.title || '');
   const cleanPureBody = cleanNewsForNarration(body || draft?.body || '');
-  const [customTitle, setCustomTitle] = useState<string>(cleanNewsForNarration(title || draft?.title || ''));
+  const [customTitle, setCustomTitle] = useState<string>(formatShortViralTitle(title || draft?.title || ''));
   const [customBody, setCustomBody] = useState<string>(cleanNewsForNarration(body || draft?.body || ''));
 
   // Cintillo Inferior Rojo editable por el usuario
@@ -1546,12 +1546,14 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
 
     // Determinar tamaño de fuente dinámico para que NUNCA se corte el titular
     let titleFontSize = 36;
-    if (cleanPureTitle.length > 110) {
+    if (customTitle.length > 110) {
       titleFontSize = 25;
-    } else if (cleanPureTitle.length > 80) {
+    } else if (customTitle.length > 80) {
       titleFontSize = 28;
-    } else if (cleanPureTitle.length > 55) {
+    } else if (customTitle.length > 60) {
       titleFontSize = 32;
+    } else {
+      titleFontSize = 36;
     }
     ctx.font = `900 ${titleFontSize}px system-ui, -apple-system, sans-serif`;
 
@@ -2074,8 +2076,10 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
     } else {
       window.open('https://www.youtube.com/upload', '_blank');
     }
-    const ytTitle = `${cleanPureTitle.slice(0, 80)} #Shorts #Noticias #Tendencias`;
-    const ytDesc = `${cleanPureTitle}\n\n${cleanPureBody}\n\n🚨 Noticias de última hora. Síguenos para más información.\n\n#Shorts #Noticias #Colombia #Viral`;
+    const finalHeadline = (customTitle || cleanPureTitle).trim();
+    const shortTitle = finalHeadline.slice(0, 65).trim();
+    const ytTitle = `${shortTitle} #Shorts #Noticias`;
+    const ytDesc = `${finalHeadline}\n\n${customBody || cleanPureBody}\n\n🚨 Noticias de última hora. Síguenos para más información.\n\n#Shorts #Noticias #Colombia #Viral`;
     try {
       await navigator.clipboard.writeText(`${ytTitle}\n\n${ytDesc}`);
     } catch {}
@@ -2103,9 +2107,10 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
 
       setPublishNotice('⏳ Transfiriendo video a Facebook...');
       const base64data = await blobToBase64(blobToUpload);
+      const finalHeadline = (customTitle || cleanPureTitle).trim();
       const res = await api.post(`/pages/${selectedPageId}/publish-video`, {
-        title: cleanPureTitle.slice(0, 100),
-        description: `${cleanPureTitle}\n\n${cleanPureBody}\n\n#Noticias #Reels #EnVivo #Colombia`,
+        title: finalHeadline.slice(0, 80),
+        description: `${finalHeadline}\n\n${customBody || cleanPureBody}\n\n#Noticias #Reels #EnVivo #Colombia`,
         videoBase64: base64data,
       });
 
@@ -2131,8 +2136,10 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
       blob = await handleExportVideo();
       if (!blob) return;
     }
+    const finalHeadline = (customTitle || cleanPureTitle).trim();
+    const shortTitle = finalHeadline.slice(0, 65).trim();
+    const fullCopy = `${shortTitle} #Shorts #Noticias\n\n${customBody || cleanPureBody}\n\n#Shorts #Noticias #Colombia`;
     try {
-      const fullCopy = `${cleanPureTitle} #Shorts #Noticias #Tendencias\n\n${cleanPureBody}`;
       await navigator.clipboard.writeText(fullCopy);
     } catch {}
     setPublishNotice('✓ ¡Short MP4 descargado y texto copiado! En la pestaña de YouTube Studio que se abrió, arrastra el archivo y pulsa Ctrl+V.');
@@ -2148,7 +2155,7 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
     }
 
     setIsPublishingToYt(true);
-    setPublishNotice('⏳ Procesando y subiendo Short 100% automático a YouTube...');
+    setPublishNotice('⏳ Procesando y subiendo Short 100% automático a YouTube vía API...');
 
     try {
       let blobToUpload = exportedBlob;
@@ -2160,16 +2167,18 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
 
       setPublishNotice('⏳ Transfiriendo video a YouTube...');
       const base64data = await blobToBase64(blobToUpload);
+      const finalHeadline = (customTitle || cleanPureTitle).trim();
+      const shortTitle = finalHeadline.slice(0, 65).trim();
 
       const res = await api.post('/youtube/publish-short', {
         channelDbId: channelIdToUse,
-        title: cleanPureTitle,
-        description: `${cleanPureTitle}\n\n${cleanPureBody}\n\n#Shorts #Noticias #Tendencias`,
+        title: shortTitle,
+        description: `${shortTitle}\n\n${customBody || cleanPureBody}\n\n#Shorts #Noticias #Tendencias`,
         videoBase64: base64data,
       });
 
       if (res.data?.success) {
-        setPublishNotice(`🎉 ¡Short subido con éxito a YouTube ("${res.data.channelTitle}")! Estado: Privado (por políticas de Google API). Puedes cambiarlo a Público en YouTube Studio: ${res.data.url}`);
+        setPublishNotice(`🎉 ¡Short subido con éxito a YouTube ("${res.data.channelTitle}")! Puedes verlo en YouTube Studio: ${res.data.url}`);
       } else {
         alert('Error de YouTube: ' + (res.data?.message || 'Error publicando Short'));
       }
@@ -2190,8 +2199,9 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
       blob = await handleExportVideo();
       if (!blob) return;
     }
+    const finalHeadline = (customTitle || cleanPureTitle).trim();
     try {
-      await navigator.clipboard.writeText(`${cleanPureTitle}\n\n${cleanPureBody}\n\n#Noticias #Reels`);
+      await navigator.clipboard.writeText(`${finalHeadline}\n\n${customBody || cleanPureBody}\n\n#Noticias #Reels`);
     } catch {}
     setPublishNotice('✓ ¡Video descargado en Descargas! En la pantalla de Facebook que se abrió, arrastra el video recién descargado y pulsa Ctrl+V.');
     window.open('https://www.facebook.com/reels/create', '_blank');
@@ -2529,14 +2539,20 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
                   </button>
                 </div>
                 <div>
-                  <label className="text-[10px] text-slate-400 font-medium block mb-1">Texto en Pantalla:</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[10px] text-slate-400 font-medium">Texto en Pantalla:</label>
+                    <span className={`text-[10px] font-mono font-bold ${customTitle.length > 70 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                      {customTitle.length}/65 chars {customTitle.length <= 65 ? '✓ Óptimo Shorts' : (customTitle.length <= 70 ? '• Aceptable' : '⚠️ Muy largo')}
+                    </span>
+                  </div>
                   <textarea
-                    rows={3}
+                    rows={2}
                     value={customTitle}
                     onChange={(e) => {
                       setCustomTitle(e.target.value);
                       drawFrame(currentTime / totalClipsDuration);
                     }}
+                    placeholder="Titular corto y directo de impacto..."
                     className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-amber-500"
                   />
                 </div>
@@ -2544,12 +2560,13 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
                   <button
                     type="button"
                     onClick={() => {
-                      setCustomTitle(draft?.title || '');
+                      setCustomTitle(formatShortViralTitle(draft?.title || title || ''));
                       drawFrame(currentTime / totalClipsDuration);
                     }}
                     className="text-[10px] text-sky-400 hover:text-sky-300 underline"
+                    title="Optimiza y corta automáticamente a longitud viral de Shorts (50-65 caracteres)"
                   >
-                    Restablecer original
+                    Auto-ajustar a Shorts
                   </button>
                   <span className="text-[9px] text-slate-400">Arrastra en pantalla</span>
                 </div>
@@ -3279,20 +3296,26 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
                 />
               </div>
 
-              {/* Titular Editable */}
+              {/* Titular Editable con Contador de Caracteres para YouTube Shorts */}
               <div className="space-y-1">
                 <div className="flex items-center justify-between text-[11px]">
                   <span className="text-slate-300 font-medium">Titular en Pantalla:</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCustomTitle(draft?.title || '');
-                      drawFrame(currentTime / totalClipsDuration);
-                    }}
-                    className="text-[10px] text-sky-400 hover:text-sky-300 underline"
-                  >
-                    Restablecer original
-                  </button>
+                  <div className="flex items-center space-x-2">
+                    <span className={`text-[10px] font-mono font-bold ${customTitle.length > 70 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                      {customTitle.length}/65 {customTitle.length <= 65 ? '✓ Óptimo Shorts' : '⚠️ Muy largo'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCustomTitle(formatShortViralTitle(draft?.title || title || ''));
+                        drawFrame(currentTime / totalClipsDuration);
+                      }}
+                      className="text-[10px] text-sky-400 hover:text-sky-300 underline"
+                      title="Optimiza y corta automáticamente a longitud viral de Shorts (50-65 caracteres)"
+                    >
+                      Auto-ajustar Shorts
+                    </button>
+                  </div>
                 </div>
                 <input
                   type="text"
@@ -3301,6 +3324,7 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
                     setCustomTitle(e.target.value);
                     drawFrame(currentTime / totalClipsDuration);
                   }}
+                  placeholder="Titular corto de impacto..."
                   className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
                 />
               </div>

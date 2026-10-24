@@ -481,19 +481,29 @@ export class YouTubeService {
       .replace(/\s+/g, ' ')
       .trim();
 
+    // Eliminar prefijos de relleno típicos de RSS o prensa
+    cleanTitle = cleanTitle.replace(/^(Atención|Urgente|En video|Última hora|Noticia|Mire aquí|Conozca|Revelan):?\s*/i, '');
+
+    // Para YouTube Shorts, el límite duro de la API es 100 caracteres, pero en la app móvil
+    // los títulos de más de 65-70 caracteres se cortan con "...".
+    // Mantenemos el titular entre 50 y 65 caracteres y anexamos " #Shorts" (longitud total <= 75).
     if (!cleanTitle.toLowerCase().includes('#shorts')) {
-      if (cleanTitle.length > 88) {
-        const truncated = cleanTitle.slice(0, 88);
+      if (cleanTitle.length > 65) {
+        const truncated = cleanTitle.slice(0, 65);
         const lastSpace = truncated.lastIndexOf(' ');
-        cleanTitle = `${(lastSpace > 40 ? truncated.slice(0, lastSpace) : truncated).trim()} #Shorts`;
+        let result = (lastSpace > 25 ? truncated.slice(0, lastSpace) : truncated).trim();
+        result = result.replace(/\s+(de|en|con|a|por|para|que|y|o|el|la|los|las|un|una|unos|unas|al|del|tras|se|su|sus|sobre)$/i, '').trim();
+        cleanTitle = `${result} #Shorts`;
       } else {
         cleanTitle = `${cleanTitle} #Shorts`;
       }
     } else {
-      if (cleanTitle.length > 100) {
-        const truncated = cleanTitle.slice(0, 100);
-        const lastSpace = truncated.lastIndexOf(' ');
-        cleanTitle = (lastSpace > 50 ? truncated.slice(0, lastSpace) : truncated).trim();
+      if (cleanTitle.length > 75) {
+        const withoutTag = cleanTitle.replace(/#shorts/gi, '').trim().slice(0, 65);
+        const lastSpace = withoutTag.lastIndexOf(' ');
+        let result = (lastSpace > 25 ? withoutTag.slice(0, lastSpace) : withoutTag).trim();
+        result = result.replace(/\s+(de|en|con|a|por|para|que|y|o|el|la|los|las|un|una|unos|unas|al|del|tras|se|su|sus|sobre)$/i, '').trim();
+        cleanTitle = `${result} #Shorts`;
       }
     }
 

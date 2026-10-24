@@ -90,7 +90,7 @@ export const ViralPhotoModal: React.FC<ViralPhotoModalProps> = ({
     const hook = sentences.slice(0, 2).join(' ') || cleanB.slice(0, 220);
     const details = sentences.slice(2, 4).join(' ');
 
-    return `🚨 ${cleanT} 🚨\n\n👉 ${hook}\n\n${details ? `📌 Puntos clave:\n• ${details}\n\n` : ''}💬 ¿Qué opinas de esta situación? Déjanos tu opinión en los comentarios 👇\n📲 Comparte esta noticia para que tus amigos y familiares estén enterados.\n\n📌 Fuente oficial: ${src || 'Noticias'}\n🔗 Información verificada: ${url || ''}\n\n#Noticias #UltimaHora #Tendencia #Colombia #Viral #Actualidad`;
+    return `🚨 ${cleanT} 🚨\n\n👉 ${hook}\n\n${details ? `📌 Puntos clave:\n• ${details}\n\n` : ''}💬 ¿Qué opinas de esta situación? Déjanos tu opinión en los comentarios 👇\n📲 Comparte esta noticia para que tus amigos y familiares estén enterados.\n\n#Noticias #UltimaHora #Tendencia #Colombia #Viral #Actualidad`;
   };
 
   // Inicializar copy viral

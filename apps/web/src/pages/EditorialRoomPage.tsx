@@ -374,7 +374,7 @@ export const EditorialRoomPage: React.FC = () => {
       editBody || selectedDraft.body || '',
       selectedDraft.sourceAttribution || ''
     );
-    const textToCopy = `${formatted.title}\n\n${formatted.body}\n\n📌 Fuente oficial: ${selectedDraft.sourceAttribution}\n🔗 Conoce más detalles: ${selectedDraft.sourceUrl}\n\n#NoticiasColombia #Tendencia #UltimaHora`;
+    const textToCopy = `${formatted.title}\n\n${formatted.body}\n\n#NoticiasColombia #Tendencia #UltimaHora`;
     try {
       await navigator.clipboard.writeText(textToCopy);
       setCopiedText(true);
@@ -742,7 +742,6 @@ export const EditorialRoomPage: React.FC = () => {
                     {editBody}
                   </p>
                   <div className="pt-1 text-[11px] text-slate-500 space-y-0.5">
-                    <p>📌 Fuente: {selectedDraft.sourceAttribution}</p>
                     <p className="text-blue-600 dark:text-blue-400 font-semibold text-[11px]">
                       #NoticiasColombia #Tendencia #UltimaHora
                     </p>
