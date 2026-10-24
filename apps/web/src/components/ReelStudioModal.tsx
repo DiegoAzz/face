@@ -507,6 +507,7 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioDestinationRef = useRef<MediaStreamAudioDestinationNode | null>(null);
   const audioElementRef = useRef<HTMLAudioElement | null>(null);
+  const bgAudioElementRef = useRef<HTMLAudioElement | null>(null);
   const speechSynthesisUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const loadedVideosRef = useRef<Map<string, HTMLVideoElement>>(new Map());
@@ -1238,6 +1239,38 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
             window.speechSynthesis.speak(utt);
           }
         };
+      }
+
+      // 2. Pista de Fondo Suave Noticiero / Última Hora (100% Sin Copyright)
+      if (musicVolume > 0) {
+        const bgAudio = new Audio('/news-breaking-ambient.mp3');
+        bgAudio.crossOrigin = 'anonymous';
+        bgAudio.loop = true;
+        bgAudioElementRef.current = bgAudio;
+
+        const connectAndPlayBg = () => {
+          try {
+            if (initialTime > 0) {
+              bgAudio.currentTime = initialTime % 32;
+            }
+            const bgSource = ctx.createMediaElementSource(bgAudio);
+            const bgGain = ctx.createGain();
+            // Nivel suave calibrado para acompañar la voz sin taparla (0.18 x musicVolume)
+            bgGain.gain.setValueAtTime(0.18 * musicVolume, ctx.currentTime);
+            bgSource.connect(bgGain);
+            bgGain.connect(dest); // Se graba en la pista de audio del MP4
+            bgGain.connect(ctx.destination); // Se escucha en la previsualización
+            bgAudio.play().catch(() => {});
+          } catch {
+            bgAudio.play().catch(() => {});
+          }
+        };
+
+        if (bgAudio.readyState >= 2) {
+          connectAndPlayBg();
+        } else {
+          bgAudio.oncanplay = connectAndPlayBg;
+        }
       }
 
       return dest.stream.getAudioTracks();
@@ -2222,6 +2255,12 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
     if (audioElementRef.current) {
       audioElementRef.current.pause();
       audioElementRef.current = null;
+    }
+    if (bgAudioElementRef.current) {
+      try {
+        bgAudioElementRef.current.pause();
+      } catch {}
+      bgAudioElementRef.current = null;
     }
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       window.speechSynthesis.cancel();
@@ -3834,21 +3873,22 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
               </div>
             </div>
 
-            {/* 5. Control de Audio de la Locución */}
-            <div className="bg-slate-800/60 p-3 rounded-2xl border border-slate-700/60 space-y-2">
+            {/* 5. Control de Audio de la Locución y Fondo Musical Sin Copyright */}
+            <div className="bg-slate-800/60 p-3 rounded-2xl border border-slate-700/60 space-y-3">
               <label className="text-xs font-bold text-slate-200 flex items-center justify-between">
                 <span className="flex items-center space-x-1.5">
                   <Music className="w-4 h-4 text-emerald-400" />
-                  <span>Audio de la Locución</span>
+                  <span>Audio & Fondo Musical (100% Sin Copyright)</span>
                 </span>
                 <span className="text-[10px] text-emerald-400 font-semibold">
-                  Audio limpio sin ruidos ni zumbidos
+                  Mezcla Profesional TV
                 </span>
               </label>
 
+              {/* Slider Voz Narrador */}
               <div>
                 <div className="flex items-center justify-between text-[11px] mb-1">
-                  <span className="text-slate-400">Volumen del Narrador ({activeNarrator.name}):</span>
+                  <span className="text-slate-400">Voz Narrador ({activeNarrator.name}):</span>
                   <span className="font-bold text-blue-400">{Math.round(voiceVolume * 100)}%</span>
                 </div>
                 <input
@@ -3860,6 +3900,35 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
                   onChange={(e) => setVoiceVolume(Number(e.target.value))}
                   className="w-full accent-blue-500"
                 />
+              </div>
+
+              {/* Slider Fondo Musical de Última Hora */}
+              <div className="pt-2 border-t border-slate-700/60 space-y-1">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="text-red-400 font-bold flex items-center space-x-1">
+                    <span>🚨 Fondo Noticias Última Hora:</span>
+                  </span>
+                  <span className="font-bold text-amber-400">{Math.round(musicVolume * 100)}%</span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={musicVolume}
+                  onChange={(e) => setMusicVolume(Number(e.target.value))}
+                  className="w-full accent-red-500"
+                />
+                <div className="flex items-center justify-between text-[9px] text-slate-400">
+                  <span>✓ 100% Libre de Derechos (Sin reclamos de Content ID)</span>
+                  <button
+                    type="button"
+                    onClick={() => setMusicVolume(musicVolume > 0 ? 0 : 0.25)}
+                    className="text-sky-400 hover:text-sky-300 font-semibold"
+                  >
+                    {musicVolume > 0 ? 'Silenciar fondo' : 'Activar fondo'}
+                  </button>
+                </div>
               </div>
             </div>
 
