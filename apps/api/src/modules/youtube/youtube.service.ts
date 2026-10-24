@@ -167,8 +167,25 @@ export class YouTubeService {
     const channelTitle = channelItem.snippet?.title || 'Mi Canal de YouTube';
     const channelThumbnail = channelItem.snippet?.thumbnails?.default?.url || null;
 
-    // 3. Cifrar refresh token con AES-256-GCM
-    const tokenToStore = refresh_token || access_token;
+    // 3. Cifrar refresh token con AES-256-GCM preservando token existente si Google no devolvió uno nuevo
+    const existingChannel = await this.prisma.youTubeChannel.findUnique({
+      where: {
+        organizationId_channelId: {
+          organizationId,
+          channelId,
+        },
+      },
+    });
+
+    let tokenToStore = refresh_token;
+    if (!tokenToStore && existingChannel?.encryptedRefreshToken) {
+      try {
+        tokenToStore = decryptSecret(existingChannel.encryptedRefreshToken);
+      } catch {}
+    }
+    if (!tokenToStore) {
+      tokenToStore = access_token;
+    }
     const encryptedRefreshToken = encryptSecret(tokenToStore);
 
     // 4. Guardar o actualizar en la base de datos
@@ -221,10 +238,48 @@ export class YouTubeService {
   }
 
   /**
+   * Desvincula un canal de YouTube.
+   */
+  async deleteChannel(id: string, organizationId: string) {
+    const channel = await this.prisma.youTubeChannel.findFirst({
+      where: { id, organizationId },
+    });
+    if (!channel) {
+      throw new NotFoundException('Canal no encontrado.');
+    }
+
+    await this.prisma.youTubeChannel.delete({
+      where: { id: channel.id },
+    });
+
+    await this.prisma.auditLog.create({
+      data: {
+        organizationId,
+        action: 'DISCONNECT_YOUTUBE_CHANNEL',
+        targetType: 'YOUTUBE_CHANNEL',
+        targetId: channel.id,
+        metadataRedacted: JSON.stringify({ channelTitle: channel.channelTitle }),
+      },
+    });
+
+    return { success: true, message: 'Canal de YouTube desconectado exitosamente.' };
+  }
+
+  /**
    * Renueva el Access Token de YouTube usando el Refresh Token cifrado.
    */
   private async getFreshAccessToken(channel: any): Promise<string> {
-    const rawToken = decryptSecret(channel.encryptedRefreshToken);
+    if (!channel.encryptedRefreshToken) {
+      throw new BadRequestException('El canal de YouTube no tiene credenciales de acceso.');
+    }
+
+    let rawToken: string;
+    try {
+      rawToken = decryptSecret(channel.encryptedRefreshToken);
+    } catch {
+      throw new BadRequestException('Error al descifrar las credenciales del canal. Por favor vuelve a vincular tu canal de YouTube.');
+    }
+
     const { clientId, clientSecret } = await this.getCredentials(channel.organizationId);
 
     try {
@@ -234,10 +289,21 @@ export class YouTubeService {
         refresh_token: rawToken,
         grant_type: 'refresh_token',
       });
-      return res.data.access_token;
+      if (res.data?.access_token) {
+        return res.data.access_token;
+      }
     } catch (err: any) {
-      return rawToken;
+      const gErr = err.response?.data?.error;
+      const gDesc = err.response?.data?.error_description || err.message;
+      if (gErr === 'invalid_grant') {
+        throw new BadRequestException(
+          'La sesión de YouTube expiró o fue desvinculada en Google. Por favor ve a Canales/Páginas y vuelve a conectar tu canal de YouTube.'
+        );
+      }
+      console.warn('Fallo refresco de token YouTube (se probará token actual):', gDesc);
     }
+
+    return rawToken;
   }
 
   /**
@@ -248,6 +314,10 @@ export class YouTubeService {
     organizationId: string,
     data: { title: string; description: string; videoBase64: string }
   ) {
+    if (!data.videoBase64) {
+      throw new BadRequestException('El contenido del video es requerido.');
+    }
+
     const channel = await this.prisma.youTubeChannel.findFirst({
       where: { id: channelDbId, organizationId },
     });
@@ -259,6 +329,10 @@ export class YouTubeService {
     const accessToken = await this.getFreshAccessToken(channel);
     const videoBuffer = Buffer.from(data.videoBase64, 'base64');
 
+    if (videoBuffer.length === 0) {
+      throw new BadRequestException('El archivo de video está vacío o dañado.');
+    }
+
     // Detectar si el contenedor del video es WebM (0x1A 0x45 0xDF 0xA3) o MP4
     const isWebM =
       videoBuffer.length >= 4 &&
@@ -269,19 +343,29 @@ export class YouTubeService {
 
     const mimeType = isWebM ? 'video/webm' : 'video/mp4';
 
+    // Limpieza estricta del título según requisitos de YouTube Data API v3 (sin saltos de línea ni caracteres prohibidos < >)
+    let cleanTitle = (data.title || 'Short')
+      .replace(/[<>\r\n]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (!cleanTitle.toLowerCase().includes('#shorts')) {
+      cleanTitle = `${cleanTitle.slice(0, 90)} #Shorts`;
+    } else {
+      cleanTitle = cleanTitle.slice(0, 100);
+    }
+
+    const cleanDescription = `${cleanTitle}\n\n${(data.description || '').replace(/[<>]/g, '')}\n\n#Shorts #Noticias #Tendencias`.slice(0, 4900);
+
     // 1. Iniciar sesión de subida resumible en YouTube
     let initRes: any;
     try {
-      const cleanTitle = data.title.includes('#Shorts')
-        ? data.title.slice(0, 100)
-        : `${data.title.slice(0, 90)} #Shorts`;
-
       initRes = await axios.post(
         'https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status',
         {
           snippet: {
             title: cleanTitle,
-            description: `${data.title}\n\n${data.description}\n\n#Shorts #Noticias #Tendencias`,
+            description: cleanDescription,
             categoryId: '25', // Noticias y Política
             tags: ['Shorts', 'Noticias', 'Actualidad', 'Colombia', 'Viral'],
           },
@@ -300,11 +384,14 @@ export class YouTubeService {
         }
       );
     } catch (err: any) {
-      const yMsg = err.response?.data?.error?.message || err.message;
+      const yMsg =
+        (typeof err.response?.data === 'string' ? err.response.data : null) ||
+        err.response?.data?.error?.message ||
+        err.message;
       throw new BadRequestException(`Error iniciando subida a YouTube: ${yMsg}`);
     }
 
-    const uploadUrl = initRes.headers.location;
+    const uploadUrl = initRes.headers?.location || initRes.headers?.Location;
     if (!uploadUrl) {
       throw new BadRequestException('YouTube no devolvió la URL de carga.');
     }
@@ -319,10 +406,13 @@ export class YouTubeService {
         },
         maxContentLength: Infinity,
         maxBodyLength: Infinity,
-        timeout: 120000,
+        timeout: 180000,
       });
     } catch (err: any) {
-      const yMsg = err.response?.data?.error?.message || err.message;
+      const yMsg =
+        (typeof err.response?.data === 'string' ? err.response.data : null) ||
+        err.response?.data?.error?.message ||
+        err.message;
       throw new BadRequestException(`Error enviando bytes de video a YouTube: ${yMsg}`);
     }
 

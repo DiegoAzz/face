@@ -79,6 +79,16 @@ export const FacebookPagesPage: React.FC = () => {
     }
   };
 
+  const handleDisconnectYouTube = async (channelDbId: string, channelTitle: string) => {
+    if (!window.confirm(`¿Estás seguro de desconectar el canal "${channelTitle}"?`)) return;
+    try {
+      await api.delete(`/youtube/channels/${channelDbId}`);
+      loadAccounts();
+    } catch (err: any) {
+      alert('Error desconectando canal: ' + (err.response?.data?.message || err.message));
+    }
+  };
+
   const handleConnectYouTube = async () => {
     try {
       const localId = localStorage.getItem('NEWSFLOW_YT_CLIENT_ID');
@@ -516,6 +526,13 @@ export const FacebookPagesPage: React.FC = () => {
                     <CheckCircle2 className="w-3.5 h-3.5" />
                     <span>Listo para Publicar</span>
                   </span>
+                  <button
+                    onClick={() => handleDisconnectYouTube(ch.id, ch.channelTitle)}
+                    className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition"
+                    title="Desconectar canal de YouTube"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
                 </div>
               </div>
             ))}

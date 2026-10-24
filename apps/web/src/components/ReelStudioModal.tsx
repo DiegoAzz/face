@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import api from '../api/client';
 import {
   X,
   Play,
@@ -359,27 +360,27 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
   const speechSynthesisUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Cargar páginas de Facebook y canales de YouTube disponibles
+  // Cargar páginas de Facebook y canales de YouTube disponibles (con token JWT)
   useEffect(() => {
-    fetch('/api/pages')
-      .then((res) => (res.ok ? res.json() : []))
-      .then((data) => {
+    api.get('/pages')
+      .then((res) => {
+        const data = res.data;
         if (Array.isArray(data) && data.length > 0) {
           setFacebookPages(data);
           setSelectedPageId(data[0].id);
         }
       })
-      .catch(() => {});
+      .catch((err) => console.warn('Error cargando páginas de Facebook:', err));
 
-    fetch('/api/youtube/channels')
-      .then((res) => (res.ok ? res.json() : []))
-      .then((data) => {
+    api.get('/youtube/channels')
+      .then((res) => {
+        const data = res.data;
         if (Array.isArray(data) && data.length > 0) {
           setYoutubeChannels(data);
           setSelectedYtChannelId(data[0].id);
         }
       })
-      .catch(() => {});
+      .catch((err) => console.warn('Error cargando canales de YouTube:', err));
   }, []);
 
   // Precargar imágenes de todos los clips
@@ -1300,13 +1301,35 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
     }
   };
 
-  // 1. Subir a YouTube Shorts (Asistido 1-Clic)
+  // Función auxiliar para convertir Blob a base64 de forma asíncrona segura
+  const blobToBase64 = (blob: Blob): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const res = (reader.result as string) || '';
+        const base64 = res.includes(',') ? res.split(',')[1] : res;
+        resolve(base64);
+      };
+      reader.onerror = (e) => reject(new Error('Error al procesar el archivo de video: ' + e));
+      reader.readAsDataURL(blob);
+    });
+  };
+
+  // 1. Subir a YouTube Shorts (Asistido 1-Clic con protección contra bloqueo de popups)
   const handlePublishYouTubeShorts = async () => {
     let blob = exportedBlob;
+    let ytWindow: Window | null = null;
     if (!blob) {
-      setPublishNotice('⏳ Renderizando y descargando el video MP4 en tu PC primero...');
+      // Abrir ventana en el evento click para evitar bloqueo de popups del navegador durante el renderizado
+      ytWindow = window.open('https://www.youtube.com/upload', '_blank');
+      setPublishNotice('⏳ Renderizando y descargando el video en tu PC primero...');
       blob = await handleExportVideo();
-      if (!blob) return;
+      if (!blob) {
+        if (ytWindow) ytWindow.close();
+        return;
+      }
+    } else {
+      window.open('https://www.youtube.com/upload', '_blank');
     }
     const ytTitle = `${cleanPureTitle.slice(0, 80)} #Shorts #Noticias #Tendencias`;
     const ytDesc = `${cleanPureTitle}\n\n${cleanPureBody}\n\n🚨 Noticias de última hora. Síguenos para más información.\n\n#Shorts #Noticias #Colombia #Viral`;
@@ -1314,8 +1337,7 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
       await navigator.clipboard.writeText(`${ytTitle}\n\n${ytDesc}`);
     } catch {}
 
-    setPublishNotice('✓ ¡Video descargado en tu carpeta de Descargas! En la pantalla de YouTube que se abrió, arrastra el archivo recién descargado y pulsa Ctrl+V.');
-    window.open('https://www.youtube.com/upload', '_blank');
+    setPublishNotice('✓ ¡Video descargado en Descargas! En la pantalla de YouTube que se abrió, arrastra el archivo y pulsa Ctrl+V.');
   };
 
   // 2. Publicar directamente a Página de Facebook conectada (Vía Meta Graph API 100% Automático)
@@ -1331,40 +1353,37 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
     try {
       let blobToUpload = exportedBlob;
       if (!blobToUpload) {
+        setPublishNotice('⏳ Renderizando Reel en memoria con subtítulos y audio...');
         blobToUpload = await renderVideoInMemory();
         setExportedBlob(blobToUpload);
       }
 
-      const reader = new FileReader();
-      reader.readAsDataURL(blobToUpload);
-      reader.onloadend = async () => {
-        const base64data = (reader.result as string).split(',')[1];
-        const res = await fetch(`/api/pages/${selectedPageId}/publish-video`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            title: cleanPureTitle.slice(0, 100),
-            description: `${cleanPureTitle}\n\n${cleanPureBody}\n\n#Noticias #Reels #EnVivo #Colombia`,
-            videoBase64: base64data,
-          }),
-        });
-        const data = await res.json();
-        if (res.ok && data.success) {
-          setPublishNotice(`🎉 ¡Reel publicado 100% automático en "${data.pageName}" en Facebook sin necesidad de descargar!`);
-        } else {
-          alert('Error de Facebook: ' + (data.message || 'Error publicando'));
-        }
-        setIsPublishingToFb(false);
-      };
+      setPublishNotice('⏳ Transfiriendo video a Facebook...');
+      const base64data = await blobToBase64(blobToUpload);
+      const res = await api.post(`/pages/${selectedPageId}/publish-video`, {
+        title: cleanPureTitle.slice(0, 100),
+        description: `${cleanPureTitle}\n\n${cleanPureBody}\n\n#Noticias #Reels #EnVivo #Colombia`,
+        videoBase64: base64data,
+      });
+
+      if (res.data?.success) {
+        setPublishNotice(`🎉 ¡Reel publicado 100% automático en "${res.data.pageName}" en Facebook sin necesidad de descargar!`);
+      } else {
+        alert('Error de Facebook: ' + (res.data?.message || 'Error publicando'));
+      }
     } catch (err: any) {
-      alert('Error: ' + err.message);
+      const msg = err.response?.data?.message || err.message || 'Error desconocido';
+      alert('Error de Facebook: ' + msg);
+      setPublishNotice('❌ Error al subir a Facebook: ' + msg);
+    } finally {
       setIsPublishingToFb(false);
     }
   };
 
-  // 2b. Publicar directamente a YouTube Shorts (100% Automático vía YouTube Data API v3)
+  // 2b. Publicar directamente a YouTube Shorts (100% Automático vía YouTube Data API v3 con JWT)
   const handlePublishToYouTubeDirect = async () => {
-    if (!selectedYtChannelId && youtubeChannels.length === 0) {
+    const channelIdToUse = selectedYtChannelId || youtubeChannels[0]?.id;
+    if (!channelIdToUse && youtubeChannels.length === 0) {
       alert('Debes tener al menos un canal de YouTube vinculado en la sección Canales/Páginas.');
       return;
     }
@@ -1375,34 +1394,31 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
     try {
       let blobToUpload = exportedBlob;
       if (!blobToUpload) {
+        setPublishNotice('⏳ Renderizando Short en memoria con audio y efectos...');
         blobToUpload = await renderVideoInMemory();
         setExportedBlob(blobToUpload);
       }
 
-      const reader = new FileReader();
-      reader.readAsDataURL(blobToUpload);
-      reader.onloadend = async () => {
-        const base64data = (reader.result as string).split(',')[1];
-        const res = await fetch('/api/youtube/publish-short', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            channelDbId: selectedYtChannelId || youtubeChannels[0]?.id,
-            title: cleanPureTitle.slice(0, 95),
-            description: `${cleanPureTitle}\n\n${cleanPureBody}\n\n#Shorts #Noticias #Tendencias`,
-            videoBase64: base64data,
-          }),
-        });
-        const data = await res.json();
-        if (res.ok && data.success) {
-          setPublishNotice(`🎉 ¡Short publicado 100% automático en YouTube ("${data.channelTitle}")! Enlace: ${data.url}`);
-        } else {
-          alert('Error de YouTube: ' + (data.message || 'Error publicando Short'));
-        }
-        setIsPublishingToYt(false);
-      };
+      setPublishNotice('⏳ Transfiriendo video a YouTube...');
+      const base64data = await blobToBase64(blobToUpload);
+
+      const res = await api.post('/youtube/publish-short', {
+        channelDbId: channelIdToUse,
+        title: cleanPureTitle.slice(0, 90),
+        description: `${cleanPureTitle}\n\n${cleanPureBody}\n\n#Shorts #Noticias #Tendencias`,
+        videoBase64: base64data,
+      });
+
+      if (res.data?.success) {
+        setPublishNotice(`🎉 ¡Short publicado 100% automático en YouTube ("${res.data.channelTitle}")! Enlace: ${res.data.url}`);
+      } else {
+        alert('Error de YouTube: ' + (res.data?.message || 'Error publicando Short'));
+      }
     } catch (err: any) {
-      alert('Error: ' + err.message);
+      const msg = err.response?.data?.message || err.message || 'Error al comunicarse con el servidor';
+      alert('Error de YouTube: ' + msg);
+      setPublishNotice('❌ Error al subir a YouTube: ' + msg);
+    } finally {
       setIsPublishingToYt(false);
     }
   };

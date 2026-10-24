@@ -2,10 +2,13 @@ import {
   Controller,
   Get,
   Post,
+  Delete,
+  Param,
   Body,
   Query,
   UseGuards,
   Res,
+  BadRequestException,
 } from '@nestjs/common';
 import { Response } from 'express';
 import { YouTubeService } from './youtube.service';
@@ -70,6 +73,16 @@ export class YouTubeController {
     return this.youtubeService.getChannels(user.organizationId);
   }
 
+  @Delete('channels/:id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.SUPERADMIN, UserRole.ORG_ADMIN)
+  async deleteChannel(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.youtubeService.deleteChannel(id, user.organizationId);
+  }
+
   @Post('publish-short')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.SUPERADMIN, UserRole.ORG_ADMIN, UserRole.EDITOR)
@@ -81,7 +94,7 @@ export class YouTubeController {
     if (!targetId) {
       const channels = await this.youtubeService.getChannels(user.organizationId);
       if (!channels || channels.length === 0) {
-        throw new Error('No hay canales de YouTube vinculados en la sección Canales/Páginas.');
+        throw new BadRequestException('No hay canales de YouTube vinculados en la sección Canales/Páginas.');
       }
       targetId = channels[0].id;
     }
