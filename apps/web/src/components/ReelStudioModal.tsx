@@ -273,12 +273,13 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
     ? `/api/media/proxy?url=${encodeURIComponent(draft.imageUrl)}`
     : suggestedStock[0];
 
-  // LÍNEA DE TIEMPO MULTI-PISTA (CLIPS ESTILO CAPCUT)
+    // LÍNEA DE TIEMPO MULTI-PISTA (4 ESCENAS AUTOMÁTICAS ESTILO CAPCUT)
+  const initialPerClip = parseFloat((targetDuration / 4).toFixed(1));
   const [clips, setClips] = useState<TimelineClip[]>([
     {
       id: 'clip_1',
       url: initialMainImage,
-      duration: Math.round((targetDuration / 3) * 10) / 10,
+      duration: initialPerClip,
       transition: 'zoom_in',
       name: 'Escena 1 (Gancho)',
       scale: 1.0,
@@ -289,9 +290,9 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
     {
       id: 'clip_2',
       url: suggestedStock[1] || suggestedStock[0],
-      duration: Math.round((targetDuration / 3) * 10) / 10,
+      duration: initialPerClip,
       transition: 'pan_right',
-      name: 'Escena 2 (B-Roll)',
+      name: 'Escena 2 (Desarrollo)',
       scale: 1.0,
       offsetY: 0,
       offsetX: 0,
@@ -300,9 +301,20 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
     {
       id: 'clip_3',
       url: suggestedStock[2] || suggestedStock[0],
-      duration: Math.round((targetDuration - (targetDuration / 3) * 2) * 10) / 10,
+      duration: initialPerClip,
+      transition: 'zoom_pan',
+      name: 'Escena 3 (Detalles)',
+      scale: 1.0,
+      offsetY: 0,
+      offsetX: 0,
+      fitMode: 'cover',
+    },
+    {
+      id: 'clip_4',
+      url: suggestedStock[3] || suggestedStock[0],
+      duration: parseFloat((targetDuration - initialPerClip * 3).toFixed(1)),
       transition: 'zoom_out',
-      name: 'Escena 3 (Cierre)',
+      name: 'Escena 4 (Cierre)',
       scale: 1.0,
       offsetY: 0,
       offsetX: 0,
@@ -359,6 +371,94 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
   const audioElementRef = useRef<HTMLAudioElement | null>(null);
   const speechSynthesisUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const previewEffectAnimRef = useRef<number | null>(null);
+  const [loadingNewsImages, setLoadingNewsImages] = useState(false);
+
+  // Cargar automáticamente 4 fotos frescas relacionadas de la noticia actual
+  useEffect(() => {
+    let isCancelled = false;
+    setLoadingNewsImages(true);
+    setPublishNotice('⏳ Analizando noticia y cargando 4+ fotos frescas relacionadas...');
+
+    api.get('/media/news-images', {
+      params: {
+        url: draft?.sourceUrl,
+        title: cleanPureTitle,
+        imageUrl: draft?.imageUrl,
+      },
+    })
+      .then((res) => {
+        if (isCancelled) return;
+        const fetched = res.data;
+        if (Array.isArray(fetched) && fetched.length >= 4) {
+          setSearchResults(fetched);
+          const perSec = parseFloat((targetDuration / 4).toFixed(1));
+          const transitions: ImageEffectType[] = ['zoom_in', 'pan_right', 'zoom_pan', 'zoom_out'];
+          const names = [
+            'Escena 1 (Gancho)',
+            'Escena 2 (Desarrollo)',
+            'Escena 3 (Detalles)',
+            'Escena 4 (Cierre)',
+          ];
+
+          setClips([
+            {
+              id: `clip_${Date.now()}_1`,
+              url: fetched[0].url,
+              duration: perSec,
+              transition: transitions[0],
+              name: names[0],
+              scale: 1.0,
+              offsetY: 0,
+              offsetX: 0,
+              fitMode: 'cover',
+            },
+            {
+              id: `clip_${Date.now()}_2`,
+              url: fetched[1].url,
+              duration: perSec,
+              transition: transitions[1],
+              name: names[1],
+              scale: 1.0,
+              offsetY: 0,
+              offsetX: 0,
+              fitMode: 'cover',
+            },
+            {
+              id: `clip_${Date.now()}_3`,
+              url: fetched[2].url,
+              duration: perSec,
+              transition: transitions[2],
+              name: names[2],
+              scale: 1.0,
+              offsetY: 0,
+              offsetX: 0,
+              fitMode: 'cover',
+            },
+            {
+              id: `clip_${Date.now()}_4`,
+              url: fetched[3].url,
+              duration: parseFloat((targetDuration - perSec * 3).toFixed(1)),
+              transition: transitions[3],
+              name: names[3],
+              scale: 1.0,
+              offsetY: 0,
+              offsetX: 0,
+              fitMode: 'cover',
+            },
+          ]);
+          setPublishNotice(`🎉 ¡4 fotos frescas relacionadas con esta noticia listas en la línea de tiempo!`);
+        }
+      })
+      .catch((e) => console.warn('Error cargando fotos de noticia:', e))
+      .finally(() => {
+        if (!isCancelled) setLoadingNewsImages(false);
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [draft?.id, draft?.sourceUrl]);
 
   // Cargar páginas de Facebook y canales de YouTube disponibles (con token JWT)
   useEffect(() => {
@@ -575,7 +675,31 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
       }
       return updated;
     });
-    drawFrame(currentTime / totalClipsDuration);
+
+    // Vista previa animada en vivo de 1.8 segundos para comprobar el movimiento de cámara en el canvas
+    if (!isPlaying) {
+      if (previewEffectAnimRef.current) cancelAnimationFrame(previewEffectAnimRef.current);
+      const animStart = performance.now();
+      const animDuration = 1800;
+      const runEffectPreview = (now: number) => {
+        const elapsed = now - animStart;
+        const normP = Math.min(elapsed / animDuration, 1);
+        let accum = 0;
+        for (let i = 0; i < activeClipIndex; i++) accum += clips[i]?.duration || 0;
+        const clipDur = clips[activeClipIndex]?.duration || 3.5;
+        const simulatedSec = accum + normP * clipDur;
+        const overallP = totalClipsDuration > 0 ? simulatedSec / totalClipsDuration : normP;
+        drawFrame(overallP);
+        if (normP < 1) {
+          previewEffectAnimRef.current = requestAnimationFrame(runEffectPreview);
+        } else {
+          drawFrame(currentTime / totalClipsDuration);
+        }
+      };
+      previewEffectAnimRef.current = requestAnimationFrame(runEffectPreview);
+    } else {
+      drawFrame(currentTime / totalClipsDuration);
+    }
   };
 
   const handleApplyTransitionToAll = (tr: ImageEffectType) => {
@@ -916,56 +1040,51 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
         const clipOffsetX = currentClip?.offsetX || 0;
         const clipOffsetY = currentClip?.offsetY || 0;
 
-        let zoom = 1.08 * clipScale;
+        let zoom = 1.10 * clipScale;
         let panX = clipOffsetX;
         let panY = clipOffsetY;
 
         const transition = currentClip?.transition || 'zoom_in';
         if (transition === 'zoom_in') {
-          // Acercamiento cinematográfico
-          zoom = (1.05 + clipProgress * 0.18) * clipScale;
+          // Acercamiento cinematográfico notable (de 1.02 a 1.40)
+          zoom = (1.02 + clipProgress * 0.38) * clipScale;
         } else if (transition === 'zoom_out') {
-          // Alejamiento suave de cámara
-          zoom = (1.23 - clipProgress * 0.18) * clipScale;
+          // Alejamiento suave y evidente (de 1.40 a 1.02)
+          zoom = (1.40 - clipProgress * 0.38) * clipScale;
         } else if (transition === 'pan_right') {
-          // Desplazamiento horizontal a la derecha
-          zoom = 1.15 * clipScale;
-          panX += (clipProgress - 0.5) * 80;
+          // Paneo horizontal hacia la derecha
+          zoom = 1.20 * clipScale;
+          panX += (clipProgress - 0.5) * 130;
         } else if (transition === 'pan_left') {
-          // Desplazamiento horizontal a la izquierda
-          zoom = 1.15 * clipScale;
-          panX += (0.5 - clipProgress) * 80;
+          // Paneo horizontal hacia la izquierda
+          zoom = 1.20 * clipScale;
+          panX += (0.5 - clipProgress) * 130;
         } else if (transition === 'pan_up') {
           // Paneo vertical hacia arriba
-          zoom = 1.15 * clipScale;
-          panY += (clipProgress - 0.5) * 70;
+          zoom = 1.20 * clipScale;
+          panY += (clipProgress - 0.5) * 110;
         } else if (transition === 'pan_down') {
           // Paneo vertical hacia abajo
-          zoom = 1.15 * clipScale;
-          panY += (0.5 - clipProgress) * 70;
+          zoom = 1.20 * clipScale;
+          panY += (0.5 - clipProgress) * 110;
         } else if (transition === 'zoom_pan') {
-          // Zoom + Paneo Diagonal combinado (Estilo Ken Burns documental)
-          zoom = (1.06 + clipProgress * 0.16) * clipScale;
-          panX += (clipProgress - 0.5) * 60;
-          panY += (clipProgress - 0.5) * 50;
+          // Ken Burns diagonal notable
+          zoom = (1.06 + clipProgress * 0.32) * clipScale;
+          panX += (clipProgress - 0.5) * 90;
+          panY += (clipProgress - 0.5) * 70;
         } else if (transition === 'pulse') {
           // Pulso dinámico / Latido rítmico
           const pulseFactor = Math.sin(clipProgress * Math.PI * 2);
-          zoom = (1.10 + pulseFactor * 0.08) * clipScale;
+          zoom = (1.14 + pulseFactor * 0.14) * clipScale;
         } else if (transition === 'shake') {
-          // Cámara en mano (movimiento orgánico sutil)
-          zoom = 1.12 * clipScale;
+          // Cámara en mano (movimiento orgánico de reportaje)
+          zoom = 1.16 * clipScale;
           const shakeFactor = Math.sin(clipProgress * Math.PI * 6);
-          panX += shakeFactor * 8;
-          panY += Math.cos(clipProgress * Math.PI * 4) * 6;
+          panX += shakeFactor * 12;
+          panY += Math.cos(clipProgress * Math.PI * 4) * 9;
         } else if (transition === 'static') {
-          // Foto fija sin movimiento
           zoom = 1.05 * clipScale;
         }
-
-        ctx.translate(width / 2 + panX, height * 0.42 + panY);
-        ctx.scale(zoom, zoom);
-        ctx.translate(-(width / 2 + panX), -(height * 0.42 + panY));
 
         const aspect = img.naturalWidth / img.naturalHeight;
         let drawW = width;
@@ -981,6 +1100,14 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
             drawW = drawH * aspect;
           }
         }
+
+        const imgCenterX = width / 2;
+        const imgCenterY = Math.min(drawH / 2, 430);
+
+        ctx.translate(imgCenterX + panX, imgCenterY + panY);
+        ctx.scale(zoom, zoom);
+        ctx.translate(-(imgCenterX + panX), -(imgCenterY + panY));
+
         ctx.drawImage(img, (width - drawW) / 2 + panX, panY, drawW, drawH);
         ctx.restore();
       } else {
@@ -1036,13 +1163,23 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
     ctx.fillText(`ESCENA ${activeIdx + 1} DE ${clips.length}`, 132, 127);
     ctx.restore();
 
-    // 5. TITULAR EN LETRAS GRANDES DE ALTO IMPACTO (Limpio, sin emojis distorsionados)
+    // 5. TITULAR EN LETRAS GRANDES DE ALTO IMPACTO (Completo, dinámico, nunca mocho)
     ctx.save();
     ctx.textAlign = 'left';
-    ctx.font = '900 36px system-ui, -apple-system, sans-serif';
 
-    const wrapText = (text: string, maxWidth: number) => {
-      const words = text.split(' ');
+    // Determinar tamaño de fuente dinámico para que NUNCA se corte el titular
+    let titleFontSize = 36;
+    if (cleanPureTitle.length > 110) {
+      titleFontSize = 25;
+    } else if (cleanPureTitle.length > 80) {
+      titleFontSize = 28;
+    } else if (cleanPureTitle.length > 55) {
+      titleFontSize = 32;
+    }
+    ctx.font = `900 ${titleFontSize}px system-ui, -apple-system, sans-serif`;
+
+    const wrapTitle = (text: string, maxWidth: number) => {
+      const words = text.split(/\s+/).filter(Boolean);
       const lines: string[] = [];
       let cur = words[0] || '';
       for (let i = 1; i < words.length; i++) {
@@ -1058,13 +1195,28 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
       return lines;
     };
 
-    const titleLines = wrapText(cleanPureTitle, width - 90).slice(0, 3);
+    const maxTitleWidth = width - 80;
+    let titleLines = wrapTitle(cleanPureTitle, maxTitleWidth);
+
+    // Si aún con ese tamaño salen más de 4 líneas, reducir un poco más la fuente para que quepa TODO
+    if (titleLines.length > 4) {
+      titleFontSize = 22;
+      ctx.font = `900 ${titleFontSize}px system-ui, -apple-system, sans-serif`;
+      titleLines = wrapTitle(cleanPureTitle, maxTitleWidth);
+    }
+
+    const lineHeight = titleFontSize + 11;
+    // Posicionar verticalmente de forma óptima para que no choque con los subtítulos
+    const totalTitleHeight = titleLines.length * lineHeight;
+    const startY = Math.min(860 - totalTitleHeight, 710);
+
     titleLines.forEach((line, idx) => {
+      const y = startY + idx * lineHeight;
       ctx.strokeStyle = '#000000';
       ctx.lineWidth = 7;
-      ctx.strokeText(line, 45, 720 + idx * 46);
+      ctx.strokeText(line, 40, y);
       ctx.fillStyle = '#ffffff';
-      ctx.fillText(line, 45, 720 + idx * 46);
+      ctx.fillText(line, 40, y);
     });
     ctx.restore();
 
@@ -1088,8 +1240,8 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
       measuredWidth = ctx.measureText(rawSubtitle).width;
     }
 
-    const pillPaddingX = 28;
-    const pillWidth = Math.min(measuredWidth + pillPaddingX * 2, 540);
+    const pillPaddingX = 24;
+    const pillWidth = Math.min(measuredWidth + pillPaddingX * 2, width - 80);
     const pillHeight = subFontSize + 24;
     const pillX = (width - pillWidth) / 2;
     const pillY = 940;

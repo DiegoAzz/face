@@ -56,4 +56,13 @@ export class MediaController {
   async searchImages(@Query('q') query: string) {
     return this.mediaService.searchImages(query || '');
   }
+
+  @Get('news-images')
+  async getNewsImages(
+    @Query('url') url: string,
+    @Query('title') title: string,
+    @Query('imageUrl') imageUrl: string
+  ) {
+    return this.mediaService.getNewsImages({ url, title, imageUrl });
+  }
 }
