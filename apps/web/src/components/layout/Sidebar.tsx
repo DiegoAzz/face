@@ -28,7 +28,7 @@ const navItems = [
 
 export const Sidebar: React.FC = () => {
   return (
-    <aside className="w-64 border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col justify-between min-h-[calc(100vh-4rem)]">
+    <aside className="hidden lg:flex w-64 border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex-col justify-between min-h-[calc(100vh-4rem)] flex-shrink-0">
       <div className="py-4 px-3 space-y-1">
         <div className="px-3 mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
           Operación Editorial

@@ -64,6 +64,7 @@ export const ViralPhotoModal: React.FC<ViralPhotoModalProps> = ({
   // Estados de Páginas de Facebook y publicación
   const [facebookPages, setFacebookPages] = useState<any[]>([]);
   const [selectedPageId, setSelectedPageId] = useState('');
+  const [mobileTab, setMobileTab] = useState<'photo' | 'copy'>('photo');
   const [isPublishingPage, setIsPublishingPage] = useState(false);
   const [publishNotice, setPublishNotice] = useState<string | null>(null);
 
@@ -427,6 +428,27 @@ export const ViralPhotoModal: React.FC<ViralPhotoModalProps> = ({
     setImageOffsetY(dragStartPosRef.current.origY + dy * 1.8);
   };
 
+  const handleCanvasTouchStart = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    if (e.touches.length === 0) return;
+    const touch = e.touches[0];
+    isDraggingRef.current = true;
+    dragStartPosRef.current = {
+      x: touch.clientX,
+      y: touch.clientY,
+      origX: imageOffsetX,
+      origY: imageOffsetY,
+    };
+  };
+
+  const handleCanvasTouchMove = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    if (!isDraggingRef.current || e.touches.length === 0) return;
+    const touch = e.touches[0];
+    const dx = touch.clientX - dragStartPosRef.current.x;
+    const dy = touch.clientY - dragStartPosRef.current.y;
+    setImageOffsetX(dragStartPosRef.current.origX + dx * 2.0);
+    setImageOffsetY(dragStartPosRef.current.origY + dy * 2.0);
+  };
+
   const endDrag = () => {
     isDraggingRef.current = false;
   };
@@ -585,19 +607,50 @@ export const ViralPhotoModal: React.FC<ViralPhotoModalProps> = ({
           </div>
         )}
 
-        {/* Layout en 2 Columnas: Visualizador de Tarjeta + Suite de Publicación */}
+        {/* Selector de Pestañas en Móvil (Foto vs Copy) */}
+        <div className="flex lg:hidden items-center bg-slate-800 p-1 rounded-xl text-xs font-bold border border-slate-700">
+          <button
+            type="button"
+            onClick={() => setMobileTab('photo')}
+            className={`flex-1 py-2 rounded-lg transition ${
+              mobileTab === 'photo'
+                ? 'bg-blue-600 text-white shadow'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            🖼️ 1. Ajustar Foto
+          </button>
+          <button
+            type="button"
+            onClick={() => setMobileTab('copy')}
+            className={`flex-1 py-2 rounded-lg transition ${
+              mobileTab === 'copy'
+                ? 'bg-blue-600 text-white shadow'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            📝 2. Copy & Publicar
+          </button>
+        </div>
+
+        {/* Layout en 2 Columnas (Tabs en Móvil, Lado a Lado en Desktop) */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
           {/* COLUMNA 1: PREVISUALIZADOR DE LA FOTO VIRAL (Canvas) */}
-          <div className="lg:col-span-6 flex flex-col items-center space-y-3">
+          <div className={`lg:col-span-6 flex flex-col items-center space-y-3 ${
+            mobileTab === 'photo' ? 'flex' : 'hidden lg:flex'
+          }`}>
             {/* Contenedor del Lienzo Canvas */}
-            <div className="relative w-full max-w-[380px] aspect-square rounded-2xl overflow-hidden shadow-2xl border-2 border-slate-700 bg-black cursor-grab active:cursor-grabbing select-none group">
+            <div className="relative w-full max-w-[340px] sm:max-w-[380px] aspect-square rounded-2xl overflow-hidden shadow-2xl border-2 border-slate-700 bg-black cursor-grab active:cursor-grabbing select-none group">
               <canvas
                 ref={canvasRef}
                 onMouseDown={handleCanvasMouseDown}
                 onMouseMove={handleCanvasMouseMove}
                 onMouseUp={endDrag}
                 onMouseLeave={endDrag}
-                className="w-full h-full object-contain"
+                onTouchStart={handleCanvasTouchStart}
+                onTouchMove={handleCanvasTouchMove}
+                onTouchEnd={endDrag}
+                className="w-full h-full object-contain touch-none"
               />
               <div className="absolute top-2 right-2 bg-black/60 backdrop-blur-md px-2 py-0.5 rounded-md text-[9px] text-slate-300 pointer-events-none opacity-0 group-hover:opacity-100 transition">
                 Arrastra para encuadrar foto
@@ -728,8 +781,20 @@ export const ViralPhotoModal: React.FC<ViralPhotoModalProps> = ({
             </div>
           </div>
 
+          {/* Botón móvil para pasar al Copy */}
+            <button
+              type="button"
+              onClick={() => setMobileTab('copy')}
+              className="lg:hidden w-full max-w-[340px] py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs shadow-md transition flex items-center justify-center space-x-1.5"
+            >
+              <span>Continuar al Copy y Publicar en Facebook →</span>
+            </button>
+          </div>
+
           {/* COLUMNA 2: COPY VIRAL Y BOTONES DE PUBLICACIÓN */}
-          <div className="lg:col-span-6 space-y-3.5">
+          <div className={`lg:col-span-6 space-y-3.5 ${
+            mobileTab === 'copy' ? 'block' : 'hidden lg:block'
+          }`}>
             {/* 1. Edición del Titular sobre la Foto */}
             <div className="bg-slate-800/60 p-3 rounded-2xl border border-slate-700/60 space-y-2">
               <label className="text-xs font-bold text-slate-200 flex items-center justify-between">
@@ -932,6 +997,5 @@ export const ViralPhotoModal: React.FC<ViralPhotoModalProps> = ({
           </div>
         </div>
       </div>
-    </div>
   );
 };

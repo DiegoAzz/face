@@ -74,7 +74,7 @@ export const Navbar: React.FC = () => {
 
   return (
     <>
-      <header className="h-16 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-6 flex items-center justify-between sticky top-0 z-30">
+      <header className="h-16 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 sm:px-6 flex items-center justify-between sticky top-0 z-30">
         <div className="flex items-center space-x-3">
           <span className="font-semibold text-lg text-slate-800 dark:text-slate-100">
             NewsFlow <span className="text-blue-600 font-bold">AI</span>

@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { NotificationProvider } from './context/NotificationContext';
 import { Navbar } from './components/layout/Navbar';
 import { Sidebar } from './components/layout/Sidebar';
+import { MobileNav } from './components/layout/MobileNav';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { NewsFeedPage } from './pages/NewsFeedPage';
@@ -36,10 +37,11 @@ const ProtectedLayout: React.FC<{ children: React.ReactNode }> = ({ children }) 
       <Navbar />
       <div className="flex flex-1">
         <Sidebar />
-        <main className="flex-1 p-6 max-w-7xl mx-auto w-full">
+        <main className="flex-1 p-3 sm:p-6 pb-24 lg:pb-6 max-w-7xl mx-auto w-full overflow-x-hidden">
           {children}
         </main>
       </div>
+      <MobileNav />
     </div>
   );
 };

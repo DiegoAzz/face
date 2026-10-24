@@ -371,7 +371,7 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
   const [publishNotice, setPublishNotice] = useState<string | null>(null);
 
   // MANIPULACIÓN DIRECTA DE ELEMENTOS EN CANVAS (ESTILO CAPCUT)
-  const [selectedElement, setSelectedElement] = useState<'image' | 'title' | 'subtitles' | 'ticker' | string>('image');
+  const [selectedElement, setSelectedElement] = useState<'image' | 'title' | 'subtitles' | 'ticker' | 'none' | string>('image');
   const [titlePos, setTitlePos] = useState<{ x: number; y: number }>({ x: 40, y: 720 });
   const [subtitlesPos, setSubtitlesPos] = useState<{ x: number; y: number }>({ x: 360, y: 940 });
   const [overlays, setOverlays] = useState<Array<{
@@ -418,6 +418,7 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
   const speechSynthesisUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const previewEffectAnimRef = useRef<number | null>(null);
+  const isRecordingRef = useRef<boolean>(false);
   const [loadingNewsImages, setLoadingNewsImages] = useState(false);
 
   // Cargar automáticamente 4 fotos frescas relacionadas de la noticia actual
@@ -1219,7 +1220,7 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
   };
 
   // DIBUJAR FRAME (720x1280 Vertical 9:16)
-  const drawFrame = (progress: number) => {
+  const drawFrame = (progress: number, isExporting = false) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -1421,17 +1422,19 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
     ctx.fillText(`${timeStr} COT`, width - 35, 50);
     ctx.restore();
 
-    // 4. INDICADOR DE ESCENA / CORTE
-    ctx.save();
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
-    ctx.beginPath();
-    ctx.roundRect(40, 105, 185, 34, 17);
-    ctx.fill();
-    ctx.fillStyle = '#38bdf8';
-    ctx.font = 'bold 14px system-ui, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(`ESCENA ${activeIdx + 1} DE ${clips.length}`, 132, 127);
-    ctx.restore();
+    // 4. INDICADOR DE ESCENA / CORTE (Sólo en previsualización de edición, NUNCA en exportación)
+    if (!isRecording && !isRecordingRef.current && !isExporting) {
+      ctx.save();
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
+      ctx.beginPath();
+      ctx.roundRect(40, 105, 185, 34, 17);
+      ctx.fill();
+      ctx.fillStyle = '#38bdf8';
+      ctx.font = 'bold 14px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(`ESCENA ${activeIdx + 1} DE ${clips.length}`, 132, 127);
+      ctx.restore();
+    }
 
     // 5. TITULAR EN LETRAS GRANDES DE ALTO IMPACTO (Completo, dinámico, nunca mocho)
     ctx.save();
@@ -1600,8 +1603,9 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
 
     // ==========================================
     // CONTROLES VISUALES CAPCUT EN VIVO (MANIPULACIÓN DIRECTA)
+    // NUNCA DIBUJAR EN EL VIDEO EXPORTADO NI EN GRABACIÓN
     // ==========================================
-    if (!isRecording) {
+    if (!isRecording && !isRecordingRef.current && !isExporting && selectedElement !== 'none') {
       ctx.save();
       if (selectedElement === 'title') {
         const boxLeft = titlePos.x - 10;
@@ -1789,8 +1793,12 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
   const renderVideoInMemory = (): Promise<Blob> => {
     return new Promise((resolve, reject) => {
       stopPlayback();
+      isRecordingRef.current = true;
+      setIsRecording(true);
       const canvas = canvasRef.current;
       if (!canvas) {
+        isRecordingRef.current = false;
+        setIsRecording(false);
         reject(new Error('Canvas no disponible'));
         return;
       }
@@ -1819,6 +1827,9 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
         };
 
         recorder.onstop = async () => {
+          isRecordingRef.current = false;
+          setIsRecording(false);
+          drawFrame(currentTime / totalClipsDuration, false);
           const rawBlob = new Blob(chunks, { type: mimeType });
           try {
             setPublishNotice('⏳ Procesando y normalizando video MP4 con FFmpeg...');
@@ -1849,7 +1860,7 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
           const elapsed = currentTimeMs - startTime;
           const progress = Math.min(elapsed / totalMs, 1);
           setCurrentTime(progress * totalClipsDuration);
-          drawFrame(progress);
+          drawFrame(progress, true);
           setRecordProgress(Math.round(progress * 100));
 
           if (progress < 1) {
@@ -1891,8 +1902,11 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
     } catch (err: any) {
       console.error('Error exportando video:', err);
       alert('Error exportando video: ' + err.message);
-      setIsRecording(false);
       return null;
+    } finally {
+      isRecordingRef.current = false;
+      setIsRecording(false);
+      drawFrame(currentTime / totalClipsDuration, false);
     }
   };
 
@@ -2147,6 +2161,18 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
                   }`}
                 >
                   🔴 Cintillo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setSelectedElement('none'); drawFrame(currentTime / totalClipsDuration); }}
+                  className={`px-2 py-1 rounded-lg text-[10px] font-bold transition ${
+                    selectedElement === 'none'
+                      ? 'bg-emerald-600 text-white shadow'
+                      : 'bg-slate-700/60 text-slate-300 hover:bg-slate-700'
+                  }`}
+                  title="Vista limpia sin recuadros de selección"
+                >
+                  👁️ Limpio
                 </button>
                 <button
                   type="button"

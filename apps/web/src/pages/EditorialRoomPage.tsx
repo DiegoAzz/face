@@ -266,6 +266,7 @@ export const EditorialRoomPage: React.FC = () => {
   const [publishedSuccessMessage, setPublishedSuccessMessage] = useState<string | null>(null);
   const [openReelModal, setOpenReelModal] = useState(false);
   const [openViralPhotoModal, setOpenViralPhotoModal] = useState(false);
+  const [mobileTab, setMobileTab] = useState<'list' | 'editor'>('editor');
 
   useEffect(() => {
     loadData();
@@ -303,6 +304,7 @@ export const EditorialRoomPage: React.FC = () => {
     setEditTitle(formatted.title);
     setEditBody(formatted.body);
     setPublishedSuccessMessage(null);
+    setMobileTab('editor');
   };
 
   const handleSaveEdit = async () => {
@@ -430,9 +432,35 @@ export const EditorialRoomPage: React.FC = () => {
         </p>
       </div>
 
+      {/* Selector de Pestañas en Celular (Lista vs Redacción) */}
+      <div className="flex lg:hidden items-center bg-slate-200 dark:bg-slate-800 p-1 rounded-xl text-xs font-bold border border-slate-300 dark:border-slate-700">
+        <button
+          type="button"
+          onClick={() => setMobileTab('list')}
+          className={`flex-1 py-2 rounded-lg transition ${
+            mobileTab === 'list'
+              ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow'
+              : 'text-slate-600 dark:text-slate-400'
+          }`}
+        >
+          📋 Lista de Noticias ({drafts.length})
+        </button>
+        <button
+          type="button"
+          onClick={() => setMobileTab('editor')}
+          className={`flex-1 py-2 rounded-lg transition ${
+            mobileTab === 'editor'
+              ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow'
+              : 'text-slate-600 dark:text-slate-400'
+          }`}
+        >
+          ✍️ Redacción & Despacho
+        </button>
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Lista de borradores (columna izquierda) */}
-        <div className="lg:col-span-4 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-4 space-y-3">
+        <div className={`lg:col-span-4 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-4 space-y-3 ${mobileTab === 'list' ? 'block' : 'hidden lg:block'}`}>
           <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
             Borradores ({drafts.length})
           </h2>
@@ -489,7 +517,17 @@ export const EditorialRoomPage: React.FC = () => {
 
         {/* Editor y panel de decisión (columna derecha) */}
         {selectedDraft ? (
-          <div className="lg:col-span-8 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-6 space-y-5">
+          <div className={`lg:col-span-8 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-4 sm:p-6 space-y-5 ${
+            mobileTab === 'editor' ? 'block' : 'hidden lg:block'
+          }`}>
+            {/* Botón para volver a la lista en celular */}
+            <button
+              type="button"
+              onClick={() => setMobileTab('list')}
+              className="lg:hidden flex items-center space-x-1 text-xs text-blue-600 dark:text-blue-400 font-bold mb-1 hover:underline"
+            >
+              <span>← Volver a la lista de noticias</span>
+            </button>
             {/* Metadatos y Banderas de Riesgo */}
             <div className="flex flex-wrap items-center justify-between gap-2 pb-4 border-b border-slate-100 dark:border-slate-800">
               <div className="flex items-center space-x-2">
@@ -603,10 +641,10 @@ export const EditorialRoomPage: React.FC = () => {
                   </span>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-2.5">
+                <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2 sm:gap-2.5">
                   <button
                     onClick={() => setOpenViralPhotoModal(true)}
-                    className="flex items-center justify-center space-x-1.5 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white px-3 py-2.5 rounded-xl text-xs font-bold shadow-lg shadow-blue-600/25 transition transform active:scale-95 col-span-1 sm:col-span-2 lg:col-span-1"
+                    className="flex items-center justify-center space-x-1.5 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white px-2.5 py-2.5 rounded-xl text-xs font-bold shadow-lg shadow-blue-600/25 transition transform active:scale-95"
                     title="Crear foto con titular viral (letras blancas con trazo negro) y copy automático listo para Facebook"
                   >
                     <ImageIcon className="w-4 h-4 flex-shrink-0 animate-bounce" />
