@@ -158,6 +158,42 @@ export function cleanNewsForNarration(text: string): string {
     .trim();
 }
 
+/**
+ * Condensa y optimiza titulares de noticias para YouTube Shorts y Reels.
+ * YouTube tiene un límite estricto de 100 caracteres, y en la app móvil de Shorts
+ * los títulos de más de 65 caracteres se cortan con "...".
+ * Además, añade espacio para tags como " #Shorts".
+ * Esta función extrae la frase principal de alto impacto en 50-65 caracteres,
+ * respetando límites de palabras y eliminando preposiciones colgantes.
+ */
+export function formatShortViralTitle(raw: string, maxLen = 65): string {
+  if (!raw) return '';
+  let clean = cleanNewsForNarration(raw).replace(/[\r\n\t]+/g, ' ').trim();
+  clean = clean.replace(/^(Atención|Urgente|En video|Última hora|Noticia|Mire aquí|Conozca|Revelan):?\s*/i, '');
+  if (clean.length <= maxLen) return clean;
+
+  // 1. Probar división por delimitadores de cláusula natural (dos puntos, coma, guion, punto)
+  const delimiters = [':', ' - ', ' – ', '—', ',', '. '];
+  for (const delim of delimiters) {
+    if (clean.includes(delim)) {
+      const firstClause = clean.split(delim)[0]?.trim();
+      if (firstClause && firstClause.length >= 25 && firstClause.length <= maxLen) {
+        return firstClause;
+      }
+    }
+  }
+
+  // 2. Si ninguna cláusula natural encajó, cortar en la última palabra completa antes de maxLen
+  const truncated = clean.slice(0, maxLen);
+  const lastSpace = truncated.lastIndexOf(' ');
+  let result = (lastSpace > 25 ? truncated.slice(0, lastSpace) : truncated).trim();
+
+  // 3. Limpiar preposiciones, artículos o palabras huérfanas al final
+  result = result.replace(/\s+(de|en|con|a|por|para|que|y|o|el|la|los|las|un|una|unos|unas|al|del|tras|se|su|sus|sobre)$/i, '').trim();
+
+  return result;
+}
+
 // Catálogo de imágenes periodísticas temáticas HD por categoría
 const THEMATIC_IMAGES: Record<string, string[]> = {
   deportes: [
