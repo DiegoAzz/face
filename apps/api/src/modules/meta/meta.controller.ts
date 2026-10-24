@@ -90,4 +90,14 @@ export class PagesController {
   ) {
     return this.metaService.publishVideoToPage(pageId, user.organizationId, body);
   }
+
+  @Post(':id/publish-photo')
+  @Roles(UserRole.SUPERADMIN, UserRole.ORG_ADMIN, UserRole.EDITOR)
+  async publishPhoto(
+    @Param('id') pageId: string,
+    @Body() body: { caption: string; photoBase64?: string; photoUrl?: string },
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.metaService.publishPhotoToPage(pageId, user.organizationId, body);
+  }
 }

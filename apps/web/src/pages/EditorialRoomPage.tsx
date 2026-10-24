@@ -17,6 +17,8 @@ import {
   Film,
 } from 'lucide-react';
 import { ReelStudioModal } from '../components/ReelStudioModal';
+import { ViralPhotoModal } from '../components/ViralPhotoModal';
+import { Image as ImageIcon } from 'lucide-react';
 
 const decodeHtml = (str: string): string => {
   if (!str) return '';
@@ -263,6 +265,7 @@ export const EditorialRoomPage: React.FC = () => {
   const [markingPublished, setMarkingPublished] = useState(false);
   const [publishedSuccessMessage, setPublishedSuccessMessage] = useState<string | null>(null);
   const [openReelModal, setOpenReelModal] = useState(false);
+  const [openViralPhotoModal, setOpenViralPhotoModal] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -600,13 +603,22 @@ export const EditorialRoomPage: React.FC = () => {
                   </span>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-2.5">
+                  <button
+                    onClick={() => setOpenViralPhotoModal(true)}
+                    className="flex items-center justify-center space-x-1.5 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white px-3 py-2.5 rounded-xl text-xs font-bold shadow-lg shadow-blue-600/25 transition transform active:scale-95 col-span-1 sm:col-span-2 lg:col-span-1"
+                    title="Crear foto con titular viral (letras blancas con trazo negro) y copy automático listo para Facebook"
+                  >
+                    <ImageIcon className="w-4 h-4 flex-shrink-0 animate-bounce" />
+                    <span className="truncate">📸 1. Foto Viral FB</span>
+                  </button>
+
                   <button
                     onClick={handleCopyFullText}
                     className="flex items-center justify-center space-x-1.5 bg-blue-600 hover:bg-blue-700 text-white px-3 py-2.5 rounded-xl text-xs font-semibold shadow transition"
                   >
                     <Copy className="w-4 h-4 flex-shrink-0" />
-                    <span className="truncate">{copiedText ? '¡Copiado!' : '1. Copiar'}</span>
+                    <span className="truncate">{copiedText ? '¡Copiado!' : '2. Copiar'}</span>
                   </button>
 
                   <button
@@ -615,7 +627,7 @@ export const EditorialRoomPage: React.FC = () => {
                     className="flex items-center justify-center space-x-1.5 bg-slate-800 hover:bg-slate-900 dark:bg-slate-700 text-white px-3 py-2.5 rounded-xl text-xs font-semibold shadow transition disabled:opacity-40"
                   >
                     <Download className="w-4 h-4 flex-shrink-0" />
-                    <span className="truncate">2. Guardar Foto</span>
+                    <span className="truncate">3. Guardar Foto</span>
                   </button>
 
                   <a
@@ -765,6 +777,17 @@ export const EditorialRoomPage: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Modal Foto Noticia Viral para Facebook (Letras Blancas con Trazo Negro + Copy) */}
+      {openViralPhotoModal && selectedDraft && (
+        <ViralPhotoModal
+          draft={selectedDraft}
+          title={editTitle}
+          body={editBody}
+          onClose={() => setOpenViralPhotoModal(false)}
+          onMarkPublished={handleMarkPublished}
+        />
+      )}
 
       {/* Modal Estudio de Video Reels */}
       {openReelModal && selectedDraft && (

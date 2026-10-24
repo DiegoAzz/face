@@ -308,4 +308,79 @@ export class MetaService {
       throw new BadRequestException(`Meta rechazó la subida del video: ${metaMsg}`);
     }
   }
+
+  async publishPhotoToPage(
+    pageDbId: string,
+    organizationId: string,
+    data: { caption: string; photoBase64?: string; photoUrl?: string }
+  ) {
+    const page = await this.prisma.facebookPage.findFirst({
+      where: { id: pageDbId, organizationId },
+    });
+
+    if (!page) {
+      throw new NotFoundException('Página de Facebook no encontrada');
+    }
+
+    const token = decryptSecret(page.tokenRef);
+
+    try {
+      let res;
+      if (data.photoBase64) {
+        // Subida de foto en Base64 (con titular viral y trazo negro)
+        const photoBuffer = Buffer.from(
+          data.photoBase64.replace(/^data:image\/\w+;base64,/, ''),
+          'base64'
+        );
+        const formData = new globalThis.FormData();
+        formData.append('access_token', token);
+        formData.append('caption', data.caption || '');
+        const blob = new globalThis.Blob([photoBuffer], { type: 'image/jpeg' });
+        formData.append('source', blob, 'noticia_viral.jpg');
+
+        res = await axios.post(
+          `https://graph.facebook.com/v19.0/${page.pageId}/photos`,
+          formData,
+          {
+            headers: {
+              'Content-Type': 'multipart/form-data',
+            },
+            timeout: 60000,
+          }
+        );
+      } else if (data.photoUrl) {
+        res = await axios.post(
+          `https://graph.facebook.com/v19.0/${page.pageId}/photos`,
+          {
+            access_token: token,
+            url: data.photoUrl,
+            caption: data.caption || '',
+          },
+          { timeout: 30000 }
+        );
+      } else {
+        throw new BadRequestException('Se requiere photoBase64 o photoUrl');
+      }
+
+      await this.prisma.auditLog.create({
+        data: {
+          organizationId,
+          action: 'PUBLISH_PHOTO_POST',
+          targetType: 'FACEBOOK_PAGE',
+          targetId: page.id,
+          metadataRedacted: JSON.stringify({ pageName: page.pageName, photoId: res.data?.id }),
+        },
+      });
+
+      return {
+        success: true,
+        remotePostId: res.data?.post_id || res.data?.id,
+        photoId: res.data?.id,
+        pageName: page.pageName,
+      };
+    } catch (err: any) {
+      const metaMsg = err.response?.data?.error?.message || err.message;
+      throw new BadRequestException(`Meta rechazó la publicación de la foto: ${metaMsg}`);
+    }
+  }
 }
