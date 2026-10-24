@@ -584,8 +584,6 @@ export const ReelStudioModal: React.FC<ReelStudioModalProps> = ({
     setPublishNotice(`✓ Efecto "${effObj?.label || tr}" aplicado a todas las escenas.`);
     drawFrame(currentTime / totalClipsDuration);
   };
-    });
-  };
 
   // 4. Eliminar escena seleccionada
   const handleDeleteActiveClip = () => {
